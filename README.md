@@ -14,4 +14,4 @@ Playing on mobile is in early days and is very much experimental; however, playi
 
 ### Graphics
 
-This game contains rudimentary graphics and should be playable by those with sight. However, owing to the fact the developer is blind, any issues with the visuals should be reported in an issue.
+This game contains rudimentary graphics and should be playable by those with sight. However, owing to the fact the developer is blind, any problems with the visuals should be reported in an issue, especially if they are game-breaking.
