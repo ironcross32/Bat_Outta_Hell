@@ -1,0 +1,618 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Bat Out Of Hell</title>
+    <script src="./node_modules/syngen/dist/syngen.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overscroll-behavior: none;
+        }
+
+        h1, h2 {
+            margin: 5px 0;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin: 20px 0;
+        }
+
+        canvas {
+            width: 100%;
+            background-color: #1e1e1e;
+            border: 4px solid #333;
+            border-radius: 8px;
+            display: block;
+            touch-action: none;
+        }
+
+        /* Compact landscape layout for mobile — maximize canvas, hide chrome */
+        @media (orientation: landscape) and (max-height: 520px) {
+            body { padding: 4px; }
+            h1 { display: none; }
+            #game-container { margin: 4px 0; max-width: none; }
+            #ui-overlay { display: none; }
+            .button-row { margin: 0; gap: 6px; }
+            .button-row .btn { padding: 6px 12px; font-size: 0.9rem; }
+        }
+
+        #ui-overlay {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            background-color: #222;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #444;
+            font-size: 1.2rem;
+            width: 100%;
+            max-width: 570px;
+            flex-wrap: wrap;
+        }
+
+        .ui-text {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 1.1rem;
+        }
+
+        .gauges {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+        }
+
+        .power-up-hud {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .power-up-hud svg {
+            display: block;
+        }
+        .power-up-icon-box {
+            width: 50px;
+            height: 50px;
+            border: 3px solid #fff;
+            background: transparent;
+            border-radius: 4px;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .gauge {
+            width: 110px;
+            height: 110px;
+            display: block;
+        }
+        .gauge-fuel {
+            height: 80px;
+        }
+
+        .btn {
+            background-color: #0076ff;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: background 0.2s;
+        }
+
+        .btn:hover, .btn:focus {
+            background-color: #0056b3;
+            outline: 3px solid #ffcc00;
+        }
+
+        .instructions {
+            background-color: #1a1a1a;
+            border-left: 5px solid #0076ff;
+            padding: 15px;
+            border-radius: 4px;
+            max-width: 600px;
+            margin-bottom: 20px;
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            border: 0;
+        }
+
+        .sound-preview-btn {
+            display: inline;
+            background: transparent;
+            color: #7ac0ff;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-size: inherit;
+            font-family: inherit;
+            cursor: pointer;
+            line-height: inherit;
+        }
+
+        .sound-preview-btn:hover, .sound-preview-btn:focus {
+            background: #1a3a5c;
+            outline: 2px solid #ffcc00;
+        }
+
+        .sound-preview-btn-bold {
+            font-weight: bold;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        #options-modal,
+        #instructions-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+        #options-modal[hidden],
+        #instructions-modal[hidden] { display: none; }
+        .options-panel {
+            background: #1e1e1e;
+            border: 2px solid #0076ff;
+            border-radius: 8px;
+            padding: 20px 30px;
+            max-width: 500px;
+            width: 100%;
+            position: relative;
+            max-height: 90vh;
+            overflow-y: auto;
+            color: #fff;
+        }
+        .options-panel h2 { margin: 0 0 10px; padding-right: 40px; }
+        .options-panel h3 { margin: 14px 0 6px; font-size: 1.1rem; }
+        .options-close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: transparent;
+            color: #fff;
+            border: 2px solid #555;
+            border-radius: 4px;
+            width: 36px;
+            height: 36px;
+            font-size: 1.4rem;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+        }
+        .options-close:hover, .options-close:focus {
+            background: #333;
+            outline: 3px solid #ffcc00;
+        }
+        .options-checkbox-list {
+            list-style: none;
+            padding: 0;
+            margin: 8px 0;
+        }
+        .options-checkbox-list li { padding: 6px 0; }
+        .options-checkbox-list label {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.05rem;
+            cursor: pointer;
+        }
+        .options-checkbox-list input[type="checkbox"] {
+            transform: scale(1.3);
+        }
+
+        .tts-params { margin-top: 10px; }
+        .tts-params[hidden] { display: none; }
+        .tts-row {
+            display: grid;
+            grid-template-columns: 120px 1fr 36px;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 0;
+        }
+        .tts-row label { font-size: 1rem; }
+        .tts-row input[type="range"] { width: 100%; }
+        .tts-row .tts-val { text-align: right; font-size: 0.95rem; color: #aaa; }
+        .tts-voice-row {
+            display: grid;
+            grid-template-columns: 120px 1fr;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 0;
+        }
+        .tts-voice-row label { font-size: 1rem; }
+        .tts-voice-row select {
+            background: #111;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 4px 6px;
+            font-size: 0.95rem;
+        }
+        #tts-test-btn {
+            margin-top: 10px;
+            background: #0076ff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 14px;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        #tts-test-btn:hover, #tts-test-btn:focus {
+            background: #0056b3;
+            outline: 3px solid #ffcc00;
+        }
+
+        .glossary {
+            list-style: none;
+            padding: 0;
+            margin: 8px 0 4px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 10px 14px;
+        }
+        .glossary li {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 8px 10px;
+        }
+        .glossary svg {
+            flex: 0 0 auto;
+            width: 44px;
+            height: 44px;
+            background: #2a2a2a;
+            border-radius: 4px;
+        }
+        .glossary .name {
+            font-size: 0.95rem;
+        }
+        .glossary li.playable {
+            cursor: pointer;
+        }
+        .glossary li.playable:hover {
+            border-color: #6af;
+            background: #181828;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Bat Out Of Hell</h1>
+
+    <div class="button-row">
+        <button id="instructions-btn" class="btn">How to play</button>
+        <button id="options-btn" class="btn">Options</button>
+        <button id="start-btn" class="btn">Start Game</button>
+    </div>
+
+    <div id="options-modal" role="dialog" aria-modal="true" aria-labelledby="options-title" hidden>
+        <div class="options-panel">
+            <button id="options-close" class="options-close" aria-label="Close options dialog">&times;</button>
+            <h2 id="options-title">Options</h2>
+            <section aria-labelledby="verbosity-title">
+                <h3 id="verbosity-title">Verbosity</h3>
+                <p style="margin:0 0 8px;">Choose what the game announces automatically. The keyboard and gamepad status shortcuts (speed, score, fuel, health) always work regardless of these settings.</p>
+                <ul class="options-checkbox-list" aria-labelledby="verbosity-title">
+                    <li><label><input type="checkbox" id="verbosity-items"> Items (obstacles, gas cans, wrenches, ramps, coins)</label></li>
+                    <li><label><input type="checkbox" id="verbosity-powerups"> Power-ups</label></li>
+                    <li><label><input type="checkbox" id="verbosity-sinkholes"> Sink holes</label></li>
+                    <li><label><input type="checkbox" id="verbosity-speed"> Periodic speed announcements</label></li>
+                    <li><label><input type="checkbox" id="verbosity-lanes"> Lane changes</label></li>
+                </ul>
+            </section>
+            <section aria-labelledby="controls-title" style="margin-top:16px; border-top:1px solid #444; padding-top:12px;">
+                <h3 id="controls-title">Controls</h3>
+                <ul class="options-checkbox-list">
+                    <li><label><input type="checkbox" id="tilt-enabled"> Use tilt steering (gyroscope)</label></li>
+                </ul>
+                <p id="tilt-unavailable" style="margin:4px 0 0; font-size:0.9rem; color:#f88; display:none;">Tilt steering is not available, or permission was denied.</p>
+            </section>
+            <section aria-labelledby="tts-title" style="margin-top:16px; border-top:1px solid #444; padding-top:12px;">
+                <h3 id="tts-title">Text-to-Speech</h3>
+                <p style="margin:0 0 8px;">Use the browser's built-in voice instead of relying on a screen reader. Recommended for mobile play without VoiceOver / TalkBack.</p>
+                <ul class="options-checkbox-list">
+                    <li><label><input type="checkbox" id="tts-enabled"> Use text-to-speech</label></li>
+                </ul>
+                <div id="tts-params" class="tts-params" hidden>
+                    <div class="tts-voice-row">
+                        <label for="tts-voice">Voice</label>
+                        <select id="tts-voice" aria-label="TTS voice"></select>
+                    </div>
+                    <div class="tts-row">
+                        <label for="tts-rate">Rate</label>
+                        <input type="range" id="tts-rate" min="0.1" max="3" step="0.1" value="1">
+                        <span class="tts-val" id="tts-rate-val">1.0</span>
+                    </div>
+                    <div class="tts-row">
+                        <label for="tts-pitch">Pitch</label>
+                        <input type="range" id="tts-pitch" min="0" max="2" step="0.1" value="1">
+                        <span class="tts-val" id="tts-pitch-val">1.0</span>
+                    </div>
+                    <div class="tts-row">
+                        <label for="tts-volume">Volume</label>
+                        <input type="range" id="tts-volume" min="0" max="1" step="0.05" value="1">
+                        <span class="tts-val" id="tts-volume-val">1.00</span>
+                    </div>
+                    <button id="tts-test-btn" type="button">Test voice</button>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div id="instructions-modal" role="dialog" aria-modal="true" aria-labelledby="instructions-title" hidden>
+        <div class="options-panel" style="max-width:620px;">
+            <button id="instructions-close" class="options-close" aria-label="Close how to play dialog">&times;</button>
+            <h2 id="instructions-title">How to Play</h2>
+
+            <p>Bat Out Of Hell uses spatial audio and screen reader announcements to assist visually impaired players. Headphones strongly recommended.</p>
+            <p><em>Highlighted terms below are buttons — press them to hear a sample of that sound.</em></p>
+
+            <h3>Visual glossary</h3>
+            <p><em>What each item looks like on the canvas, for sighted helpers.</em></p>
+            <ul class="glossary" aria-label="Visual glossary of game items">
+                <li>
+                    <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
+                        <rect x="13" y="6" width="18" height="32" fill="#0076ff"/>
+                        <rect x="14" y="3" width="6" height="5" fill="#ffffaa"/>
+                        <rect x="24" y="3" width="6" height="5" fill="#ffffaa"/>
+                    </svg>
+                    <span class="name">Your car</span>
+                </li>
+                <li class="playable" onclick="previewObstacle()" title="Click to hear">
+                    <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
+                        <rect x="6" y="14" width="32" height="16" fill="#ff3333"/>
+                    </svg>
+                    <span class="name">Obstacle</span>
+                </li>
+                <li class="playable" onclick="previewGasCan()" title="Click to hear">
+                    <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
+                        <rect x="10" y="12" width="22" height="24" fill="#3a7a2c" stroke="#1f4717" stroke-width="2"/>
+                        <rect x="14" y="8" width="10" height="6" fill="#3a7a2c" stroke="#1f4717" stroke-width="2"/>
+                        <rect x="26" y="6" width="6" height="4" fill="#888"/>
+                        <rect x="13" y="18" width="16" height="3" fill="#1f4717"/>
+                    </svg>
+                    <span class="name">Gas can</span>
+                </li>
+                <li class="playable" onclick="previewWrench()" title="Click to hear">
+                    <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
+                        <g transform="rotate(-45 22 22)" fill="#b8b8c0" stroke="#202024" stroke-width="1.5" stroke-linejoin="round">
+                            <path d="M 12 6 L 32 6 L 32 18 L 26 18 L 26 14 L 18 14 L 18 18 L 12 18 Z"/>
+                            <rect x="18" y="14" width="8" height="20"/>
+                            <circle cx="22" cy="36" r="6"/>
+                            <circle cx="22" cy="36" r="2.5" fill="#3a3a44" stroke="none"/>
+                        </g>
+                    </svg>
+                    <span class="name">Wrench</span>
+                </li>
+                <li>
+                    <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
+                        <rect x="22" y="20" width="20" height="20" fill="#ffd633"/>
+                        <circle cx="14" cy="22" r="9" fill="#ffd633"/>
+                    </svg>
+                    <span class="name">Coin</span>
+                </li>
+                <li class="playable" onclick="previewPowerUp('shield')" title="Click to hear">
+                    <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
+                        <rect x="2" y="2" width="40" height="40" fill="#33ccff"/>
+                    </svg>
+                    <span class="name">Shield power-up</span>
+                </li>
+                <li class="playable" onclick="previewPowerUp('rocket')" title="Click to hear">
+                    <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
+                        <rect x="2" y="2" width="40" height="40" fill="#ff8833"/>
+                    </svg>
+                    <span class="name">Rocket power-up</span>
+                </li>
+                <li class="playable" onclick="previewPowerUp('hornBall')" title="Click to hear">
+                    <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
+                        <rect x="2" y="2" width="40" height="40" fill="#cc66ff"/>
+                    </svg>
+                    <span class="name">Horn ball power-up</span>
+                </li>
+                <li>
+                    <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
+                        <circle cx="22" cy="22" r="8" fill="#ffff66"/>
+                    </svg>
+                    <span class="name">Horn ball (fired)</span>
+                </li>
+                <li>
+                    <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
+                        <polygon points="4,34 40,34 33,12 11,12" fill="#66cc66"/>
+                    </svg>
+                    <span class="name">Ramp</span>
+                </li>
+                <li>
+                    <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
+                        <rect x="2" y="2" width="40" height="40" fill="#2a2a2a"/>
+                        <rect x="2" y="2" width="40" height="40" fill="rgba(15,3,3,0.82)"/>
+                        <line x1="2" y1="22" x2="42" y2="22" stroke="#8b0000" stroke-width="3"/>
+                    </svg>
+                    <span class="name">Sinkhole</span>
+                </li>
+                <li>
+                    <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
+                        <circle cx="22" cy="14" r="6" fill="#ffeb66"/>
+                    </svg>
+                    <span class="name">Air coin (over ramp)</span>
+                </li>
+            </ul>
+
+            <h3>Driving controls</h3>
+            <p>Press <strong>Start Game</strong> to begin, then use the keyboard to drive.</p>
+            <ul>
+                <li>Use <strong>Left/Right Arrow Keys</strong> to switch between 3 lanes (Left, Middle, Right).</li>
+                <li>Use <strong>Up/Down Arrow Keys</strong> to adjust your speed.</li>
+                <li>Avoid <button class="sound-preview-btn" onclick="previewObstacle()">obstacles</button>. An obstacle emits a tone that increases in pitch as it approaches, and falls as it passes by. Its position in the stereo field indicates which lane it's in.</li>
+                <li>Collect <button class="sound-preview-btn" onclick="previewGasCan()">gas cans</button> (three metallic noise bursts) by being in their lane when they reach you. Fuel burns faster the harder you push the throttle.</li>
+                <li>Press <strong>G</strong> to hear your current fuel level.</li>
+                <li>Press <strong>P</strong> to hear your current score (points).</li>
+                <li>Press <strong>S</strong> to hear your current speed.</li>
+                <li>Press <strong>H</strong> to hear your current vehicle health.</li>
+                <li>Hold <strong>Space</strong> to honk the horn. Honking accepts a pending race challenge, and fires a projectile when the horn-ball power-up is active.</li>
+            </ul>
+
+            <h3>Power-ups</h3>
+            <p>Collect <strong>power-ups</strong> (up to three at a time) by being in their lane. Press <strong>Shift</strong> to activate the most recent one. Only one can be active at a time.</p>
+            <ul>
+                <li><button class="sound-preview-btn sound-preview-btn-bold" onclick="previewPowerUp('shield')">Shield</button> absorbs one obstacle hit with no damage or speed loss. Surviving the whole duration of the power-up at an average speed of 50 mph or more grants a points bonus.</li>
+                <li><button class="sound-preview-btn sound-preview-btn-bold" onclick="previewPowerUp('rocket')">🚀 Rocket</button> Makes you go like a bat out of hell for 20 seconds. You get 5 additional seconds for each gas can you collect while the rocket is active. Try to collect as many coins as you can to get even more points!</li>
+                <li><button class="sound-preview-btn sound-preview-btn-bold" onclick="previewPowerUp('hornBall')">Horn ball</button> Ever wanted to shoot balls out the front of your car with your horn? Now you can! Anything the ball hits gets destroyed and you get points. Chain them together for an even bigger bonus, but be careful of hitting gas cans.</li>
+                <li>When an active power-up runs out, a <button class="sound-preview-btn" onclick="previewPowerUpExpire()">power-up expiring</button> sound plays — a descending high-to-low sweep with two voices, the second trailing 1.25× slower than the first.</li>
+            </ul>
+
+            <h3>Gamepad</h3>
+            <p>A standard controller is fully supported with haptic feedback.</p>
+            <ul>
+                <li><strong>Left stick</strong> steers between lanes. Hold it past the threshold to keep moving — lane changes repeat every half second, matching the arrow keys.</li>
+                <li><strong>Right trigger</strong> accelerates, <strong>Left trigger</strong> decelerates. Both are analog — a half-pulled trigger ramps the throttle at half speed.</li>
+                <li><strong>A</strong> honks the horn — press and hold mirrors the keyboard space bar (also fires the horn-ball projectile when that power-up is active, and accepts a pending race challenge).</li>
+                <li><strong>Left bumper (LB)</strong> is a shift modifier. Hold it and press a face button for the shifted action: <strong>LB+A</strong> speaks your speed, <strong>LB+B</strong> speaks your score, <strong>LB+X</strong> speaks your fuel level, <strong>LB+Y</strong> speaks your health.</li>
+                <li><strong>Right bumper (RB)</strong> activates the most recent power-up in your queue (same as Shift on the keyboard).</li>
+                <li><strong>Start / Menu</strong> toggles pause.</li>
+                <li>On the title screen and the game-over screen, the <strong>D-pad</strong> moves focus between on-screen buttons and <strong>A</strong> activates the focused one — so Start, Play Again, and the statistics toggle are all reachable without leaving the controller.</li>
+                <li>Rumble channels reinforce the audio cues: obstacles rumble the right side as they approach and pass; sink holes alternate left and right; ramps thump on launch and on landing; horn-ball fires, hits, and gas-can blasts each have their own signature pulse. Power-up pickups have a recognisable three-pulse-right plus long-left-half pattern as they approach.</li>
+            </ul>
+        </div>
+    </div>
+
+    <div id="game-over" role="dialog" aria-live="assertive" aria-labelledby="game-over-title" style="display:none; background-color:#1a1a1a; border:2px solid #ff3333; border-radius:8px; padding:20px; max-width:600px; margin:20px 0; text-align:center;">
+        <h2 id="game-over-title">Game Over</h2>
+        <p id="go-reason" style="display:none; font-style:italic; color:#ff9999; margin-bottom:12px;"></p>
+        <p>Final score: <span id="go-score">0</span></p>
+        <p>Run time: <span id="go-time">0</span></p>
+        <button id="stats-toggle" class="btn" aria-expanded="false" aria-controls="stats-panel" style="margin-bottom:10px;">Show Statistics</button>
+        <div id="stats-panel" hidden style="text-align:left; background-color:#111; border:1px solid #333; border-radius:6px; padding:12px 16px; margin-bottom:12px;">
+            <h3 style="margin-top:0;">Statistics</h3>
+            <ul id="stats-list" style="list-style:none; padding:0; margin:0; line-height:1.6;"></ul>
+        </div>
+        <button id="restart-btn" class="btn">Play Again</button>
+    </div>
+
+    <div id="ui-overlay" aria-hidden="true">
+        <div class="ui-text">
+            <div>Lane: <span id="ui-lane">Middle</span></div>
+            <div>Score: <span id="ui-score">0</span></div>
+        </div>
+        <div class="power-up-hud">
+            <svg id="power-up-timer" class="power-up-timer" viewBox="0 0 50 50" width="50" height="50" hidden>
+                <circle cx="25" cy="25" r="22" fill="#000" stroke="#fff" stroke-width="3"/>
+                <path id="power-up-timer-slice" d="" fill="#e63333"/>
+            </svg>
+            <div class="power-up-icon-box">
+                <svg id="power-up-icon" viewBox="0 0 50 50" width="44" height="44"></svg>
+            </div>
+        </div>
+        <div class="gauges">
+            <svg class="gauge gauge-speed" viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="56" fill="#000" stroke="#fff" stroke-width="3"/>
+                <g fill="#fff" font-size="11" font-family="sans-serif" text-anchor="middle" dominant-baseline="middle">
+                    <text x="30.3" y="89.7">0</text>
+                    <text x="18.5" y="53.5">30</text>
+                    <text x="40.9" y="22.6">60</text>
+                    <text x="79.1" y="22.6">90</text>
+                    <text x="101.5" y="53.5">120</text>
+                    <text x="89.7" y="89.7">150</text>
+                </g>
+                <text x="60" y="78" fill="#fff" font-size="10" font-family="sans-serif" text-anchor="middle">mph</text>
+                <g id="speed-needle" transform="rotate(-135 60 60)">
+                    <line x1="60" y1="60" x2="60" y2="22" stroke="#ff2222" stroke-width="3" stroke-linecap="round"/>
+                    <circle cx="60" cy="60" r="4" fill="#ff2222"/>
+                </g>
+            </svg>
+
+            <svg class="gauge gauge-fuel" viewBox="0 0 120 90">
+                <path d="M 8 80 A 52 52 0 0 1 112 80" fill="#000" stroke="#fff" stroke-width="3"/>
+                <line x1="8" y1="80" x2="112" y2="80" stroke="#fff" stroke-width="3"/>
+                <text x="16" y="74" fill="#fff" font-size="14" font-family="sans-serif" font-weight="bold">E</text>
+                <text x="98" y="74" fill="#fff" font-size="14" font-family="sans-serif" font-weight="bold">F</text>
+                <g transform="translate(54 50)" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="0" y="2" width="9" height="14" fill="#fff" stroke="none"/>
+                    <rect x="1.4" y="3.6" width="6.2" height="3.6" fill="#000"/>
+                    <line x1="9" y1="7" x2="12" y2="7"/>
+                    <line x1="12" y1="7" x2="12" y2="4"/>
+                </g>
+                <g id="fuel-needle" transform="rotate(-90 60 80)">
+                    <line x1="60" y1="80" x2="60" y2="34" stroke="#ff2222" stroke-width="3" stroke-linecap="round"/>
+                    <circle cx="60" cy="80" r="4" fill="#ff2222"/>
+                </g>
+            </svg>
+
+            <svg class="gauge gauge-health" viewBox="0 0 120 120">
+                <defs>
+                    <clipPath id="health-damage-clip">
+                        <rect id="health-damage-rect" x="0" y="120" width="120" height="0"/>
+                    </clipPath>
+                </defs>
+                <path id="wrench-shape" d="M 50 115 L 50 45 L 33 45 L 33 18 L 50 18 L 50 30 L 70 30 L 70 18 L 87 18 L 87 45 L 70 45 L 70 115 Q 60 120 50 115 Z" fill="#2dd24d" stroke="#1a7a2c" stroke-width="2"/>
+                <path d="M 50 115 L 50 45 L 33 45 L 33 18 L 50 18 L 50 30 L 70 30 L 70 18 L 87 18 L 87 45 L 70 45 L 70 115 Q 60 120 50 115 Z" fill="#e63333" clip-path="url(#health-damage-clip)"/>
+            </svg>
+        </div>
+    </div>
+
+    <div id="game-container" role="application">
+        <canvas id="gameCanvas" width="600" height="400" tabindex="0" aria-label="Game Canvas. Use arrow keys to drive."></canvas>
+    </div>
+
+    <div id="announcer" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
+    <script src="./js/dom.js"></script>
+    <script src="./js/options.js"></script>
+    <script src="./js/audio-core.js"></script>
+    <script src="./js/state.js"></script>
+    <script src="./js/prop-sounds.js"></script>
+    <script src="./js/ramp.js"></script>
+    <script src="./js/sinkhole-wrench-gas.js"></script>
+    <script src="./js/engine.js"></script>
+    <script src="./js/power-ups.js"></script>
+    <script src="./js/tunnel.js"></script>
+    <script src="./js/cpu-race.js"></script>
+    <script src="./js/world.js"></script>
+    <script src="./js/previews.js"></script>
+    <script src="./js/input-rumble-gamepad.js"></script>
+    <script src="./js/touch.js"></script>
+    <script src="./js/loop.js"></script>
+    <script src="./js/draw.js"></script>
+    <script src="./js/lifecycle.js"></script>
+</body>
+</html>
