@@ -69,6 +69,7 @@
             flex-direction: column;
             gap: 6px;
             font-size: 1.1rem;
+            min-width: max-content;
         }
 
         .gauges {
@@ -98,12 +99,12 @@
         }
 
         .gauge {
-            width: 110px;
-            height: 110px;
+            width: clamp(65px, 15vw, 110px);
+            height: clamp(65px, 15vw, 110px);
             display: block;
         }
         .gauge-fuel {
-            height: 80px;
+            height: clamp(47px, 10.9vw, 80px);
         }
 
         .btn {
