@@ -185,12 +185,23 @@
             // First event of a run (or after a recalibrate) defines neutral.
             if (tiltNeutral === null) { tiltNeutral = sig; return; }
             const delta = sig - tiltNeutral;
-            if (tiltArmed) {
-                if (delta > TILT_TRIGGER_DEG)      { moveLane(1);  tiltArmed = false; }
-                else if (delta < -TILT_TRIGGER_DEG) { moveLane(-1); tiltArmed = false; }
-            } else if (Math.abs(delta) < TILT_RECENTER_DEG) {
-                tiltArmed = true;
-            }
+
+            // Positional mapping with a hysteresis band around the middle lane:
+            //   delta >  TRIGGER          → right lane
+            //   delta < -TRIGGER          → left lane
+            //   |delta| <  RECENTER       → middle lane
+            //   (in between → hold whatever lane we're in: the deadband)
+            let target = lane;
+            if (delta > TILT_TRIGGER_DEG) target = 2;
+            else if (delta < -TILT_TRIGGER_DEG) target = 0;
+            else if (Math.abs(delta) < TILT_RECENTER_DEG) target = 1;
+
+            // Step one lane toward the target. Events fire ~60Hz, so crossing two
+            // lanes (left↔right) resolves over consecutive frames and never skips
+            // the middle — and moveLane's per-change cue/announce/speed-bleed all
+            // apply to each step, matching keyboard/gamepad lane changes.
+            if (target > lane) moveLane(1);
+            else if (target < lane) moveLane(-1);
         }
 
         function attachTiltListener() {
@@ -199,12 +210,11 @@
             tiltListenerAttached = true;
         }
 
-        // Re-arm and force recalibration on the next sensor event. Called at the
-        // start of every run so neutral matches however the player is holding the
-        // phone right now.
+        // Force recalibration on the next sensor event. Called at the start of
+        // every run so neutral matches however the player is holding the phone
+        // right now.
         function calibrateTilt() {
             tiltNeutral = null;
-            tiltArmed = true;
         }
 
         // Must be called from a user gesture (checkbox toggle or Start button).

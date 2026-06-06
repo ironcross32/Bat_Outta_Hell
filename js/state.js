@@ -17,15 +17,17 @@
         const laneNames = ["Left Lane", "Middle Lane", "Right Lane"];
 
         // ── Tilt steering (device orientation) ───────────────────────────────
-        // Discrete lane changes from physically tilting the phone. A neutral
-        // angle is captured at game start (the player holds the phone level);
-        // tilting past TILT_TRIGGER_DEG from neutral fires one lane change, and
-        // the control must return within TILT_RECENTER_DEG of neutral before it
-        // re-arms — so one tilt-and-hold = exactly one lane change (hysteresis).
-        const TILT_TRIGGER_DEG  = 18;  // degrees from neutral to trigger a lane change
-        const TILT_RECENTER_DEG = 8;   // must come back within this of neutral to re-arm
+        // Positional steering: how far the phone is tilted from a calibrated
+        // neutral directly selects the lane. Tilt left past TILT_TRIGGER_DEG →
+        // left lane, hold level → middle lane, tilt right past TILT_TRIGGER_DEG
+        // → right lane. The two thresholds give hysteresis around the middle so
+        // small wobble near a boundary doesn't oscillate: you must exceed
+        // TILT_TRIGGER_DEG to leave the middle into an outer lane, and fall back
+        // within TILT_RECENTER_DEG of neutral to return to the middle. Neutral
+        // is captured at game start (the player holds the phone level).
+        const TILT_TRIGGER_DEG  = 12;  // degrees from neutral to select an outer lane
+        const TILT_RECENTER_DEG = 5;   // come back within this of neutral for the middle lane
         let tiltNeutral = null;        // calibrated neutral signal (deg); null = recalibrate on next event
-        let tiltArmed = true;          // false after a trigger until re-centred
         let tiltListenerAttached = false;
         const lanePositionsX = [100, 300, 500];
         // Soundstage geometry: keep forward distance small relative to lateral lane offset
