@@ -226,8 +226,24 @@
             // tiltEnabled=true without a live permission. Recalibrate neutral to
             // however the phone is being held right now.
             if (controlsOptions.tiltEnabled) {
+                // Reset neutral + the live flag now; real events flip tiltActive
+                // back on (which is also what hands flick steering back if the
+                // sensor never delivers). Then re-request permission from this
+                // gesture so a cache-restored preference still works after iOS
+                // drops the grant across sessions.
+                calibrateTilt();
                 ensureTiltPermission().then((ok) => {
-                    if (ok) { attachTiltListener(); calibrateTilt(); }
+                    if (ok) {
+                        attachTiltListener();
+                    } else {
+                        // Cached preference says tilt is on, but the OS won't grant
+                        // the sensor right now. Keep the preference so the next
+                        // Start retries, surface the notice in Options, and tell
+                        // the player — flick steering stays available (tiltActive
+                        // is false, so touch.js leaves the flick enabled).
+                        if (tiltUnavailableEl) tiltUnavailableEl.style.display = 'block';
+                        announce('Tilt steering unavailable');
+                    }
                 });
             }
 
@@ -292,7 +308,6 @@
             gameOverEl.style.display = 'none';
             startBtn.style.display = 'inline-block';
             startBtn.textContent = "Pause Game";
-            announce("Bat Out Of Hell engaged. Full tank. Full health.");
         }
 
         restartBtn.addEventListener('click', startGame);

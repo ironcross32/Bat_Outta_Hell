@@ -184,6 +184,9 @@
             const sig = rawTiltSignal(e);
             // First event of a run (or after a recalibrate) defines neutral.
             if (tiltNeutral === null) { tiltNeutral = sig; return; }
+            // We're receiving real sensor data, so tilt is genuinely live — this
+            // is what disables the touch flick fallback (see touch.js).
+            tiltActive = true;
             const delta = sig - tiltNeutral;
 
             // Positional mapping with a hysteresis band around the middle lane:
@@ -215,6 +218,7 @@
         // right now.
         function calibrateTilt() {
             tiltNeutral = null;
+            tiltActive = false;   // re-detect a live sensor from real events each run
         }
 
         // Must be called from a user gesture (checkbox toggle or Start button).

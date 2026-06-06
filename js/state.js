@@ -25,10 +25,17 @@
         // TILT_TRIGGER_DEG to leave the middle into an outer lane, and fall back
         // within TILT_RECENTER_DEG of neutral to return to the middle. Neutral
         // is captured at game start (the player holds the phone level).
-        const TILT_TRIGGER_DEG  = 12;  // degrees from neutral to select an outer lane
+        const TILT_TRIGGER_DEG  = 15;  // degrees from neutral to select an outer lane
         const TILT_RECENTER_DEG = 5;   // come back within this of neutral for the middle lane
         let tiltNeutral = null;        // calibrated neutral signal (deg); null = recalibrate on next event
         let tiltListenerAttached = false;
+        // The *preference* (controlsOptions.tiltEnabled) is persisted and may be
+        // restored from cache without a live OS permission. `tiltActive` is the
+        // *runtime* truth: it flips true only once real orientation events start
+        // arriving in-game, and resets each run. Touch flick steering falls back
+        // on this so a stale/denied permission never leaves the player with no
+        // lane control.
+        let tiltActive = false;
         const lanePositionsX = [100, 300, 500];
         // Soundstage geometry: keep forward distance small relative to lateral lane offset
         // so the bearing to the obstacle is dominated by lane difference, not approach distance.

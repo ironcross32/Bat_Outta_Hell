@@ -90,6 +90,7 @@
         tiltEnabledEl.addEventListener('change', () => {
             if (!tiltEnabledEl.checked) {
                 controlsOptions.tiltEnabled = false;
+                tiltActive = false;   // hand lane control back to the touch flick
                 tiltUnavailableEl.style.display = 'none';
                 saveOptions();
                 return;

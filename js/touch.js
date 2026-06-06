@@ -2,7 +2,7 @@
         //
         // SINGLE FINGER
         //   Vertical drag   — throttle (positional setter; half canvas height = full range)
-        //   Horizontal flick — lane change left/right (when tilt steering is off)
+        //   Horizontal flick — lane change left/right (when tilt steering isn't live)
         //
         // TWO FINGERS
         //   Tap             — activate power-up
@@ -204,7 +204,10 @@
                     touchThrottleActive = false;
                     _touchThrottleId = -1;
 
-                    if (!controlsOptions.tiltEnabled) {
+                    // Flick steering is the fallback whenever tilt isn't actually
+                    // driving lanes — i.e. tilt off, or enabled-but-not-yet-live
+                    // (permission stale/denied). See `tiltActive` in state.js.
+                    if (!tiltActive) {
                         const dt    = performance.now() - _touchStartTime;
                         const dx    = _touchLastX - _touchAnchorX;
                         const dy    = _touchLastY - _touchAnchorY;
