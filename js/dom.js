@@ -1,8 +1,7 @@
 ﻿        const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const startBtn = document.getElementById('start-btn');
-        const uiLane = document.getElementById('ui-lane');
-        const uiScore = document.getElementById('ui-score');
+const uiScore = document.getElementById('ui-score');
         const speedNeedle = document.getElementById('speed-needle');
         const fuelNeedle = document.getElementById('fuel-needle');
         const healthDamageRect = document.getElementById('health-damage-rect');
@@ -53,3 +52,16 @@
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && !instructionsModal.hidden) closeInstructions();
         });
+
+        function resizeCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            const w = Math.round(rect.width);
+            const h = Math.round(rect.height);
+            if (w > 0 && h > 0) {
+                canvas.width  = w;
+                canvas.height = h;
+            }
+        }
+        requestAnimationFrame(resizeCanvas);
+        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('orientationchange', () => requestAnimationFrame(resizeCanvas));

@@ -119,7 +119,6 @@
                 }
             }
 
-            uiLane.textContent = laneNames[lane].replace(" Lane", "");
             updateSpeedGauge(speed);
             uiScore.textContent = score;
 

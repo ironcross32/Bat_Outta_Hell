@@ -25,12 +25,13 @@
         #game-container {
             position: relative;
             width: 100%;
-            max-width: 600px;
             margin: 20px 0;
         }
 
         canvas {
             width: 100%;
+            aspect-ratio: 3 / 2;
+            max-height: 100svh;
             background-color: #1e1e1e;
             border: 4px solid #333;
             border-radius: 8px;
@@ -42,7 +43,7 @@
         @media (orientation: landscape) and (max-height: 520px) {
             body { padding: 4px; }
             h1 { display: none; }
-            #game-container { margin: 4px 0; max-width: none; }
+            #game-container { margin: 4px 0; }
             #ui-overlay { display: none; }
             .button-row { margin: 0; gap: 6px; }
             .button-row .btn { padding: 6px 12px; font-size: 0.9rem; }
@@ -532,8 +533,7 @@
 
     <div id="ui-overlay" aria-hidden="true">
         <div class="ui-text">
-            <div>Lane: <span id="ui-lane">Middle</span></div>
-            <div>Score: <span id="ui-score">0</span></div>
+<div>Score: <span id="ui-score">0</span></div>
         </div>
         <div class="power-up-hud">
             <svg id="power-up-timer" class="power-up-timer" viewBox="0 0 50 50" width="50" height="50" hidden>
@@ -592,7 +592,7 @@
     </div>
 
     <div id="game-container" role="application">
-        <canvas id="gameCanvas" width="600" height="400" tabindex="0" aria-label="Game Canvas. Use arrow keys to drive."></canvas>
+        <canvas id="gameCanvas" width="600" height="400" tabindex="0" aria-label="Game Canvas"></canvas>
     </div>
 
     <div id="announcer" class="sr-only" aria-live="assertive" aria-atomic="true"></div>

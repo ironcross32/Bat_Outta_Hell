@@ -28,8 +28,10 @@
         let _touchLastX         = 0;
         let _touchLastY         = 0;
 
-        // Half the displayed canvas height covers the full speed range.
-        const TOUCH_THROTTLE_HEIGHT_FRACTION = 0.5;
+        // Three-quarters of the displayed canvas height covers the full speed
+        // range. A larger fraction = lower sensitivity (more drag per mph), which
+        // makes small speed adjustments easier to dial in.
+        const TOUCH_THROTTLE_HEIGHT_FRACTION = 0.75;
 
         // Single-finger flick thresholds.
         const FLICK_MAX_MS = 300;

@@ -146,6 +146,86 @@
             }
         }
 
+        // ===== Tilt steering (device orientation) =====
+        // The headline feature: read the gyroscope and steer between the three
+        // lanes by tilting the phone. The game is played in landscape held
+        // roughly level, so the left/right steering axis is `beta` (front-back
+        // pitch in the device's portrait frame becomes the screen's left-right
+        // roll once rotated 90°). In portrait we fall back to `gamma`. The sign
+        // of the landscape axis depends on which way the device was rotated, so
+        // we flip it for the 270° orientation. Calibration (tiltNeutral) is
+        // captured per run, so absolute offsets don't matter — only the delta.
+        //
+        // If left/right ever comes out reversed on a given device, flip the sign
+        // of the `beta`/`gamma` returns below (this is the one place to change).
+        function currentTiltAngle() {
+            if (screen.orientation && typeof screen.orientation.angle === 'number') {
+                return screen.orientation.angle;
+            }
+            if (typeof window.orientation === 'number') {
+                return ((window.orientation % 360) + 360) % 360;
+            }
+            return 0;
+        }
+
+        function rawTiltSignal(e) {
+            const beta  = (typeof e.beta  === 'number') ? e.beta  : 0;
+            const gamma = (typeof e.gamma === 'number') ? e.gamma : 0;
+            switch (currentTiltAngle()) {
+                case 90:  return  beta;   // landscape (rotated counter-clockwise)
+                case 270: return -beta;   // landscape (rotated clockwise)
+                case 180: return -gamma;  // upside-down portrait
+                default:  return  gamma;  // portrait
+            }
+        }
+
+        function handleTilt(e) {
+            if (!controlsOptions.tiltEnabled || !gameRunning || paused) return;
+            const sig = rawTiltSignal(e);
+            // First event of a run (or after a recalibrate) defines neutral.
+            if (tiltNeutral === null) { tiltNeutral = sig; return; }
+            const delta = sig - tiltNeutral;
+            if (tiltArmed) {
+                if (delta > TILT_TRIGGER_DEG)      { moveLane(1);  tiltArmed = false; }
+                else if (delta < -TILT_TRIGGER_DEG) { moveLane(-1); tiltArmed = false; }
+            } else if (Math.abs(delta) < TILT_RECENTER_DEG) {
+                tiltArmed = true;
+            }
+        }
+
+        function attachTiltListener() {
+            if (tiltListenerAttached) return;
+            window.addEventListener('deviceorientation', handleTilt);
+            tiltListenerAttached = true;
+        }
+
+        // Re-arm and force recalibration on the next sensor event. Called at the
+        // start of every run so neutral matches however the player is holding the
+        // phone right now.
+        function calibrateTilt() {
+            tiltNeutral = null;
+            tiltArmed = true;
+        }
+
+        // Must be called from a user gesture (checkbox toggle or Start button).
+        // iOS 13+ gates the sensor behind requestPermission(); Android/desktop
+        // expose it freely. Resolves true when orientation events will flow.
+        function ensureTiltPermission() {
+            if (typeof DeviceOrientationEvent === 'undefined') return Promise.resolve(false);
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                return DeviceOrientationEvent.requestPermission()
+                    .then((state) => state === 'granted')
+                    .catch(() => false);
+            }
+            return Promise.resolve(true);
+        }
+
+        // On a cached load where tilt was previously enabled, attach the listener
+        // immediately. Android resumes steering right away; iOS won't deliver
+        // events until permission is (re-)granted from a gesture — that happens
+        // on the next checkbox toggle or Start click (see ensureTiltPermission).
+        if (controlsOptions.tiltEnabled) attachTiltListener();
+
         // ===== Rumble =====
         // Dual-rumble output for connected gamepads. Two pools:
         //   - sources: keyed continuous channels with {left, right} 0..1, callers

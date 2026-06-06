@@ -220,6 +220,17 @@
             canvas.focus();
             if (!engineSynth) buildEngine();
 
+            // Tilt steering: this Start click is a user gesture, so re-request
+            // sensor permission here too — iOS does not reliably persist the
+            // grant across sessions, and a cached load may have restored
+            // tiltEnabled=true without a live permission. Recalibrate neutral to
+            // however the phone is being held right now.
+            if (controlsOptions.tiltEnabled) {
+                ensureTiltPermission().then((ok) => {
+                    if (ok) { attachTiltListener(); calibrateTilt(); }
+                });
+            }
+
             gameRunning = true;
             targetSpeed = 0;
             speed = 0;

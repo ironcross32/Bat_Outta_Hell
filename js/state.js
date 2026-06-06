@@ -15,6 +15,18 @@
         // The legacy scheduleNextSpawn / nextSpawnAt / SPAWN_GAP_* family was
         // removed when spawning moved from time-based to distance-based chunks.
         const laneNames = ["Left Lane", "Middle Lane", "Right Lane"];
+
+        // ── Tilt steering (device orientation) ───────────────────────────────
+        // Discrete lane changes from physically tilting the phone. A neutral
+        // angle is captured at game start (the player holds the phone level);
+        // tilting past TILT_TRIGGER_DEG from neutral fires one lane change, and
+        // the control must return within TILT_RECENTER_DEG of neutral before it
+        // re-arms — so one tilt-and-hold = exactly one lane change (hysteresis).
+        const TILT_TRIGGER_DEG  = 18;  // degrees from neutral to trigger a lane change
+        const TILT_RECENTER_DEG = 8;   // must come back within this of neutral to re-arm
+        let tiltNeutral = null;        // calibrated neutral signal (deg); null = recalibrate on next event
+        let tiltArmed = true;          // false after a trigger until re-centred
+        let tiltListenerAttached = false;
         const lanePositionsX = [100, 300, 500];
         // Soundstage geometry: keep forward distance small relative to lateral lane offset
         // so the bearing to the obstacle is dominated by lane difference, not approach distance.

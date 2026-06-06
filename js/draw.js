@@ -1,11 +1,16 @@
 ﻿        function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+            const scaleX = canvas.width / 600;
+            const scaleY = canvas.height / 400;
+            ctx.save();
+            ctx.scale(scaleX, scaleY);
+
             ctx.strokeStyle = '#444';
             ctx.lineWidth = 5;
             ctx.beginPath();
-            ctx.moveTo(200, 0); ctx.lineTo(200, canvas.height);
-            ctx.moveTo(400, 0); ctx.lineTo(400, canvas.height);
+            ctx.moveTo(200, 0); ctx.lineTo(200, 400);
+            ctx.moveTo(400, 0); ctx.lineTo(400, 400);
             ctx.stroke();
 
             const dashOffset = (Date.now() / (200 - speed + 1)) % 40;
@@ -14,8 +19,8 @@
             ctx.setLineDash([20, 20]);
             ctx.lineDashOffset = -dashOffset;
             ctx.beginPath();
-            ctx.moveTo(200, 0); ctx.lineTo(200, canvas.height);
-            ctx.moveTo(400, 0); ctx.lineTo(400, canvas.height);
+            ctx.moveTo(200, 0); ctx.lineTo(200, 400);
+            ctx.moveTo(400, 0); ctx.lineTo(400, 400);
             ctx.stroke();
             ctx.setLineDash([]);
 
@@ -26,9 +31,9 @@
                 if (sinkhole.traversalStarted) {
                     // Full columns blocked — sinkhole is at/past the player
                     if (sinkhole.freeLane === 2) {
-                        ctx.fillRect(0, 0, 400, canvas.height);
+                        ctx.fillRect(0, 0, 400, 400);
                     } else {
-                        ctx.fillRect(200, 0, 400, canvas.height);
+                        ctx.fillRect(200, 0, 400, 400);
                     }
                 } else if (frontY > 0) {
                     // Front edge still ahead — fill from canvas top down to edge
@@ -250,7 +255,7 @@
             if (jumping && lift > 0) {
                 ctx.save();
                 ctx.fillStyle = `rgba(40, 50, 70, ${0.78 * lift})`;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillRect(0, 0, 600, 400);
                 ctx.restore();
             }
 
@@ -324,5 +329,7 @@
                 ctx.stroke();
             }
 
-            ctx.restore();
+            ctx.restore(); // throttle slider restore
+
+            ctx.restore(); // scale restore
         }

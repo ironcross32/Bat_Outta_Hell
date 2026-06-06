@@ -94,36 +94,30 @@
                 saveOptions();
                 return;
             }
-            // iOS 13+ requires an explicit permission grant from a user gesture.
-            if (typeof DeviceOrientationEvent !== 'undefined' &&
-                typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission().then((state) => {
-                    if (state === 'granted') {
-                        controlsOptions.tiltEnabled = true;
-                        tiltUnavailableEl.style.display = 'none';
-                    } else {
-                        tiltEnabledEl.checked = false;
-                        controlsOptions.tiltEnabled = false;
-                        tiltUnavailableEl.style.display = 'block';
-                    }
-                    saveOptions();
-                }).catch(() => {
-                    tiltEnabledEl.checked = false;
-                    controlsOptions.tiltEnabled = false;
-                    tiltUnavailableEl.style.display = 'block';
-                    saveOptions();
-                });
-            } else if (typeof DeviceOrientationEvent !== 'undefined') {
-                // Android / desktop — no permission step needed.
-                controlsOptions.tiltEnabled = true;
-                saveOptions();
-            } else {
-                // API genuinely absent.
+            // The actual sensor wiring (permission, listener, calibration) lives
+            // in input-rumble-gamepad.js. Request permission from this user
+            // gesture, then attach the deviceorientation listener on success.
+            if (typeof DeviceOrientationEvent === 'undefined') {
+                // API genuinely absent (desktop browser with no sensor support).
                 tiltEnabledEl.checked = false;
                 controlsOptions.tiltEnabled = false;
                 tiltUnavailableEl.style.display = 'block';
                 saveOptions();
+                return;
             }
+            ensureTiltPermission().then((ok) => {
+                if (ok) {
+                    controlsOptions.tiltEnabled = true;
+                    tiltUnavailableEl.style.display = 'none';
+                    attachTiltListener();
+                    calibrateTilt();
+                } else {
+                    tiltEnabledEl.checked = false;
+                    controlsOptions.tiltEnabled = false;
+                    tiltUnavailableEl.style.display = 'block';
+                }
+                saveOptions();
+            });
         });
 
         const ttsEnabled   = document.getElementById('tts-enabled');
