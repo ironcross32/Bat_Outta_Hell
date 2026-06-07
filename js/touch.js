@@ -1,5 +1,14 @@
         // Touch input for mobile play.
         //
+        // The canvas splits into three columns: a vertical horn strip at each
+        // end (HORN_STRIP_FRACTION of the width) and a central gesture zone.
+        //
+        // HORN STRIPS (left / right ends, single finger)
+        //   Press & hold    — honk the horn for as long as held; also fires the
+        //                      Horn ball power-up when one is active
+        //
+        // Everything below happens in the central gesture zone only.
+        //
         // SINGLE FINGER
         //   Vertical drag   — throttle (positional setter; half canvas height = full range)
         //   Horizontal flick — lane change left/right (when tilt steering isn't live)
@@ -41,6 +50,15 @@
         // Tracks every active touch: id → { startX, startY, startTime, lastX, lastY }
         const _mt = new Map();
 
+        // A multi-finger gesture rarely lifts all fingers within a single
+        // touchend event — they release a few ms apart, across separate events.
+        // So we remember the peak simultaneous finger count for the current
+        // gesture and accumulate lifted-finger records, firing the gesture only
+        // once the last finger is up. (The old "all fingers in one touchend"
+        // check is why multi-finger gestures felt flaky.)
+        let _mtPeak = 0;
+        const _mtLifted = [];
+
         // Tap detection: all fingers must lift within this time and move less than
         // TAP_MAX_PX from their start position.
         const TAP_MAX_MS = 300;
@@ -48,6 +66,21 @@
 
         // Swipe detection: average displacement must exceed this.
         const SWIPE_MIN_PX = 40;
+
+        // ── Horn strips (single finger) ───────────────────────────────────────
+        // A vertical strip at each end of the canvas honks the horn for as long
+        // as a finger is held there, leaving the middle as the gesture zone for
+        // throttle / flick / multi-finger gestures. A finger that starts in a
+        // strip is horn-only — it never feeds the throttle or the multi-touch
+        // tracker. Holding the horn is also how the Horn ball power-up fires on
+        // mobile (mirrors the spacebar path in input-rumble-gamepad.js).
+        const HORN_STRIP_FRACTION = 0.18;   // each side strip = 18% of width
+        const _hornTouchIds = new Set();    // active horn fingers (horn on while non-empty)
+
+        function _inHornStrip(clientX, rect) {
+            return clientX < rect.left  + rect.width * HORN_STRIP_FRACTION ||
+                   clientX > rect.right - rect.width * HORN_STRIP_FRACTION;
+        }
 
         function _abortThrottle() {
             if (touchThrottleActive) {
@@ -124,25 +157,46 @@
 
             cv.addEventListener('touchstart', (e) => {
                 e.preventDefault();
+                const rect = cv.getBoundingClientRect();
 
                 for (const t of e.changedTouches) {
+                    // A finger in a side strip is horn-only; keep it out of the
+                    // gesture-zone tracker entirely.
+                    if (_inHornStrip(t.clientX, rect)) {
+                        const wasEmpty = _hornTouchIds.size === 0;
+                        _hornTouchIds.add(t.identifier);
+                        if (wasEmpty && gameRunning && !paused) {
+                            startHorn();
+                            if (activePowerUp && activePowerUp.type === 'hornBall' &&
+                                !projectile.active && !jumping) {
+                                spawnProjectile();
+                            }
+                        }
+                        continue;
+                    }
                     _mt.set(t.identifier, {
                         startX: t.clientX, startY: t.clientY,
                         startTime: performance.now(),
                         lastX: t.clientX,  lastY: t.clientY,
                     });
                 }
+                if (_mt.size > _mtPeak) _mtPeak = _mt.size;
 
-                // If two or more fingers are now down, cancel single-finger throttle.
+                // If two or more gesture-zone fingers are down, cancel throttle.
                 if (_mt.size >= 2) {
                     _abortThrottle();
                     return;
                 }
 
-                // Single finger — start throttle tracking.
+                // Single gesture-zone finger — start throttle tracking.
                 if (!gameRunning || paused) return;
                 if (touchThrottleActive) return;
-                const t = e.changedTouches[0];
+                if (_mt.size !== 1) return;
+                let t = null;
+                for (const ct of e.changedTouches) {
+                    if (_mt.has(ct.identifier)) { t = ct; break; }
+                }
+                if (!t) return;
                 _touchThrottleId  = t.identifier;
                 _touchAnchorX     = t.clientX;
                 _touchAnchorY     = t.clientY;
@@ -181,21 +235,29 @@
             cv.addEventListener('touchend', (e) => {
                 e.preventDefault();
 
-                // Collect the records for fingers that just lifted.
-                const lifted = [];
+                // Horn strip releases — horn stays on until the last one lifts.
+                for (const t of e.changedTouches) {
+                    if (_hornTouchIds.delete(t.identifier) && _hornTouchIds.size === 0) {
+                        stopHorn();
+                    }
+                }
+
+                // Accumulate the records for fingers that just lifted. Fingers in
+                // a multi-finger gesture usually release across several touchend
+                // events, so we keep collecting until the map empties.
                 for (const t of e.changedTouches) {
                     if (_mt.has(t.identifier)) {
-                        lifted.push(_mt.get(t.identifier));
+                        _mtLifted.push(_mt.get(t.identifier));
                         _mt.delete(t.identifier);
                     }
                 }
 
-                // Fire multi-touch gesture when ALL fingers from a group have lifted.
-                // We trigger when the map empties after having had ≥2 touches, using
-                // the snapshot of lifted touches (which includes all fingers from this
-                // gesture since they typically lift together or within one event).
-                if (_mt.size === 0 && lifted.length >= 2) {
-                    _handleMultiGesture(lifted);
+                // Once the last finger is up, fire the multi-touch gesture if the
+                // gesture ever involved ≥2 fingers, then reset for the next one.
+                if (_mt.size === 0) {
+                    if (_mtPeak >= 2) _handleMultiGesture(_mtLifted.slice());
+                    _mtLifted.length = 0;
+                    _mtPeak = 0;
                 }
 
                 // Single-finger throttle / flick resolution.
@@ -224,7 +286,16 @@
             }, { passive: false });
 
             cv.addEventListener('touchcancel', (e) => {
-                for (const t of e.changedTouches) _mt.delete(t.identifier);
+                for (const t of e.changedTouches) {
+                    _mt.delete(t.identifier);
+                    if (_hornTouchIds.delete(t.identifier) && _hornTouchIds.size === 0) {
+                        stopHorn();
+                    }
+                }
+                if (_mt.size === 0) {
+                    _mtLifted.length = 0;
+                    _mtPeak = 0;
+                }
                 touchThrottleActive = false;
                 _touchThrottleId = -1;
             }, { passive: false });

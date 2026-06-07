@@ -181,6 +181,9 @@
 
         function handleTilt(e) {
             if (!controlsOptions.tiltEnabled || !gameRunning || paused) return;
+            // Hold off until the orientation cue's chime fires: don't steer and
+            // don't capture neutral while the player is still settling the phone.
+            if (tiltCalibratePending) return;
             const sig = rawTiltSignal(e);
             // First event of a run (or after a recalibrate) defines neutral.
             if (tiltNeutral === null) { tiltNeutral = sig; return; }
@@ -219,6 +222,36 @@
         function calibrateTilt() {
             tiltNeutral = null;
             tiltActive = false;   // re-detect a live sensor from real events each run
+        }
+
+        // Orienting the phone for tilt steering is finicky — the player often has
+        // to turn the screen reader off and get the phone level by feel — so on
+        // Start we don't read neutral immediately. Instead we play a three-beat
+        // cue, one beat per second: two A4 tones to count down, then a tri-tone
+        // chime (A4 in the middle). Neutral is captured the moment the chime
+        // sounds, giving the player ~2 s to settle the phone. tiltCalibratePending
+        // (set by startGame) suspends steering/neutral-capture until the chime.
+        const TILT_CAL_BEEP_HZ = 440;   // A4
+        function startTiltCalibrationCue(onComplete) {
+            playCue(TILT_CAL_BEEP_HZ, 0.45, 'sine', -10);
+            setTimeout(() => playCue(TILT_CAL_BEEP_HZ, 0.45, 'sine', -10), 1000);
+            setTimeout(() => {
+                playTiltCalibrationChime();
+                // Read the sensor now: drop neutral and clear the hold so the next
+                // orientation event captures however the phone is being held as the
+                // chime plays.
+                tiltNeutral = null;
+                tiltCalibratePending = false;
+                // Calibration done — let the caller begin the run.
+                if (typeof onComplete === 'function') onComplete();
+            }, 2000);
+        }
+
+        // F-major arpeggio — F4 → A4 → C5 — so A4 lands in the middle of the chime.
+        function playTiltCalibrationChime() {
+            playCue(349.23, 0.50, 'sine', -10);                          // F4
+            setTimeout(() => playCue(440.00, 0.50, 'sine', -10), 120);   // A4
+            setTimeout(() => playCue(523.25, 0.60, 'sine', -10), 240);   // C5
         }
 
         // Must be called from a user gesture (checkbox toggle or Start button).

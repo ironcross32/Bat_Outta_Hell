@@ -213,6 +213,10 @@
         }
 
         function startGame() {
+            // Ignore a second Start press while the tilt permission/calibration
+            // hand-off from a previous press is still in flight.
+            if (tiltStartPending) return;
+
             syngen.context().resume();
             if (ttsOptions && ttsOptions.enabled) ttsSpeakRaw('Begin');
             const audioSession = syngen.context().audioSession;
@@ -223,30 +227,41 @@
             // Tilt steering: this Start click is a user gesture, so re-request
             // sensor permission here too — iOS does not reliably persist the
             // grant across sessions, and a cached load may have restored
-            // tiltEnabled=true without a live permission. Recalibrate neutral to
-            // however the phone is being held right now.
+            // tiltEnabled=true without a live permission. We defer the actual run
+            // start until the OS prompt is answered AND the orientation cue has
+            // captured neutral, so the game never begins under the player's feet.
             if (controlsOptions.tiltEnabled) {
-                // Reset neutral + the live flag now; real events flip tiltActive
-                // back on (which is also what hands flick steering back if the
-                // sensor never delivers). Then re-request permission from this
-                // gesture so a cache-restored preference still works after iOS
-                // drops the grant across sessions.
-                calibrateTilt();
+                tiltActive = false;
+                tiltNeutral = null;
+                tiltCalibratePending = true;
+                tiltStartPending = true;
                 ensureTiltPermission().then((ok) => {
                     if (ok) {
                         attachTiltListener();
+                        // Orienting the phone is finicky (the player often kills
+                        // the screen reader and levels it by feel). Play the
+                        // countdown cue and begin the run only once its final
+                        // chime reads the sensor ~2 s from now.
+                        startTiltCalibrationCue(beginRun);
                     } else {
-                        // Cached preference says tilt is on, but the OS won't grant
-                        // the sensor right now. Keep the preference so the next
-                        // Start retries, surface the notice in Options, and tell
-                        // the player — flick steering stays available (tiltActive
-                        // is false, so touch.js leaves the flick enabled).
+                        // The OS won't grant the sensor. Keep the preference so the
+                        // next Start retries, surface the notice in Options, and
+                        // tell the player — then start straight away on flick
+                        // steering (no sensor to calibrate).
                         if (tiltUnavailableEl) tiltUnavailableEl.style.display = 'block';
                         announce('Tilt steering unavailable');
+                        tiltCalibratePending = false;
+                        beginRun();
                     }
                 });
+                return;
             }
 
+            beginRun();
+        }
+
+        function beginRun() {
+            tiltStartPending = false;
             gameRunning = true;
             targetSpeed = 0;
             speed = 0;

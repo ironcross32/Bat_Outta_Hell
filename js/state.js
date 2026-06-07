@@ -29,6 +29,15 @@
         const TILT_RECENTER_DEG = 5;   // come back within this of neutral for the middle lane
         let tiltNeutral = null;        // calibrated neutral signal (deg); null = recalibrate on next event
         let tiltListenerAttached = false;
+        // True between the Start press and the orientation-cue chime: steering is
+        // suspended and neutral capture is held off so the player has a couple of
+        // seconds to orient the phone before we read the sensor. See
+        // startTiltCalibrationCue() in input-rumble-gamepad.js.
+        let tiltCalibratePending = false;
+        // True while a Start press is waiting on the iOS permission prompt and the
+        // calibration cue before the run actually begins. Guards against a second
+        // Start press re-triggering the whole sequence while it's in flight.
+        let tiltStartPending = false;
         // The *preference* (controlsOptions.tiltEnabled) is persisted and may be
         // restored from cache without a live OS permission. `tiltActive` is the
         // *runtime* truth: it flips true only once real orientation events start
