@@ -97,6 +97,11 @@
         // arriving in unmissable clumps.
         const WORLD_CLUSTER_WINDOW_UNITS = 900;
 
+        // During an active rocket run, a fraction of would-be rocket-extension
+        // pickups are dropped to an obstacle instead, thinning extension spawns
+        // by ~10% so they don't cluster 5-6 deep. (No gas cans spawn mid-rocket.)
+        const ROCKET_PICKUP_SKIP_CHANCE = 0.1;
+
         // Challenge-mode boosters: every world slot would otherwise become a
         // booster (DENSE_GAP ≈ 1.2 s @ 100 mph), which feels relentless. Drop
         // any slot whose distance from the last booster is below this gap so
@@ -111,6 +116,7 @@
         let worldLastSinkholeAt = -Infinity;
         let worldLastGasCanAt = -Infinity;
         let worldLastRampAt = -Infinity;
+        let worldLastWrenchAt = -Infinity;
         let worldLastTunnelAt = -Infinity;
         let worldLastBoosterAt = -Infinity;
         // Hazard-clear cursor that survives across chunks. When a tunnel or
@@ -136,6 +142,7 @@
             worldLastSinkholeAt = -Infinity;
             worldLastGasCanAt = -Infinity;
             worldLastRampAt = -Infinity;
+            worldLastWrenchAt = -Infinity;
             worldLastTunnelAt = -Infinity;
             worldLastBoosterAt = -Infinity;
             worldClearUntil = 0;
@@ -298,6 +305,7 @@
             worldLastSinkholeAt = worldPos;
             worldLastGasCanAt = -Infinity;
             worldLastRampAt = -Infinity;
+            worldLastWrenchAt = -Infinity;
             worldLastTunnelAt = -Infinity;
             worldLastBoosterAt = -Infinity;
             worldClearUntil = 0;
@@ -330,17 +338,6 @@
                 worldLastBoosterAt = worldPos;
                 return;
             }
-            // Critical-health rescue: at or below WRENCH_CRITICAL_HEALTH, with no
-            // wrench currently on the road, promote a chunk of incoming non-wrench
-            // pickup/obstacle slots to wrenches. Honours the long-dormant
-            // WRENCH_CRITICAL_HEALTH "tighter spawn window" promise. Sinkholes/
-            // tunnels/ramps are left alone — replacing those would warp the world.
-            if (health < WRENCH_CRITICAL_HEALTH
-                    && !wrench.active
-                    && (ev.kind === 'obstacle' || ev.kind === 'powerUp' || ev.kind === 'gasCan')
-                    && rand() < 0.07) {
-                ev = { ...ev, kind: 'wrench' };
-            }
             switch (ev.kind) {
                 case 'sinkhole':
                     // Only one ground-hazard at a time. If something is in the
@@ -356,7 +353,18 @@
                 case 'gasCan':
                     if (gasCan.active) return;
                     if (activePowerUp && activePowerUp.type === 'rocket') {
-                        if (!powerUpPickup.active) spawnPowerUpPickup(ev.lane, dist, 'rocket');
+                        if (!powerUpPickup.active) {
+                            if (rand() < rocketConversionChance()) {
+                                if (!obstacle.active && !sinkhole.active) spawnObstacle(ev.lane, dist);
+                            } else if (rand() < ROCKET_PICKUP_SKIP_CHANCE) {
+                                // Thin out mid-run rocket pickups by ~10%: drop the
+                                // slot to an obstacle instead so extensions don't
+                                // cluster. No gas cans spawn during a rocket run.
+                                if (!obstacle.active && !sinkhole.active) spawnObstacle(ev.lane, dist);
+                            } else {
+                                spawnPowerUpPickup(ev.lane, dist, 'rocket');
+                            }
+                        }
                         return;
                     }
                     if (worldPos - worldLastGasCanAt < WORLD_CLUSTER_WINDOW_UNITS) {
@@ -368,11 +376,20 @@
                     return;
                 case 'wrench':
                     if (wrench.active) return;
-                    if (health >= WRENCH_HEALTH_GATE) {
+                    // No clustering — keep wrenches spaced out. If one passed
+                    // recently, this slot becomes an ordinary obstacle.
+                    if (worldPos - worldLastWrenchAt < WORLD_CLUSTER_WINDOW_UNITS) {
+                        if (!obstacle.active && !sinkhole.active) spawnObstacle(ev.lane, dist);
+                        return;
+                    }
+                    // Spawn likelihood scales with health: rarer the healthier
+                    // you are, but always possible (floor at full health).
+                    if (rand() >= wrenchSpawnChance()) {
                         if (!obstacle.active && !sinkhole.active) spawnObstacle(ev.lane, dist);
                         return;
                     }
                     spawnWrench(ev.lane, dist);
+                    worldLastWrenchAt = worldPos;
                     return;
                 case 'ramp':
                     if (ramp.active) return;
@@ -396,6 +413,12 @@
                             return;
                         }
                         if (type === 'shield' && shieldCount > 0 && rand() < 0.75) {
+                            if (!obstacle.active && !sinkhole.active) spawnObstacle(ev.lane, dist);
+                            return;
+                        }
+                        // Mid-rocket-run, rocket pickups can be swapped for obstacles
+                        // at a chance that rises with accumulated rocket time.
+                        if (type === 'rocket' && rand() < rocketConversionChance()) {
                             if (!obstacle.active && !sinkhole.active) spawnObstacle(ev.lane, dist);
                             return;
                         }

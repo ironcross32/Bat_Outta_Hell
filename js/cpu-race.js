@@ -708,8 +708,11 @@
             const range = CHALLENGE_COLLISION_SPEED_MAX - CHALLENGE_COLLISION_SPEED_MIN;
             const playerLoss = CHALLENGE_COLLISION_SPEED_MIN + rand() * range;
             const cpuLoss = CHALLENGE_COLLISION_SPEED_MIN + rand() * range;
+            // Scrub the player's actual speed only — targetSpeed stays put so the car
+            // climbs back to it after the recovery hold (also lets a rocket-locked car
+            // recover without throttle input).
             speed = Math.max(0, speed - playerLoss);
-            targetSpeed = Math.min(targetSpeed, speed + 10);
+            accelHoldUntil = now + SLOWDOWN_RECOVERY_DELAY;
             cpuCar.speed = Math.max(0, cpuCar.speed - cpuLoss);
             // Nudge the CPU away from the player's lane so they don't grind.
             if (cpuCar.lane === lane && cpuCar.laneChangeCooldown === 0) {

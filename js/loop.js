@@ -62,11 +62,19 @@
             const backfireActive = syngen.time() < backfireActiveUntil;
 
             if (jumping) {
-                // Off-throttle in the air: bleed 2 mph/s (= 20 mph over a 10 s
-                // hang time). The throttle target is preserved, so the car
-                // re-accelerates up to it on landing (engine.js applies the
-                // load envelope).
-                speed = Math.max(0, speed - 2 * delta);
+                if (rocketActive) {
+                    // Rockets still fire in the air, and there's no rolling
+                    // resistance up here — so instead of bleeding speed the car
+                    // climbs toward ROCKET_AIR_SPEED (175). The engine itself
+                    // stays at idle aloft (the rev arc is in currentRpm()).
+                    speed = Math.min(ROCKET_AIR_SPEED, speed + ROCKET_AIR_BOOST_RATE * delta);
+                } else {
+                    // Off-throttle in the air: bleed 2 mph/s (= 20 mph over a 10 s
+                    // hang time). The throttle target is preserved, so the car
+                    // re-accelerates up to it on landing (engine.js applies the
+                    // load envelope).
+                    speed = Math.max(0, speed - 2 * delta);
+                }
             } else if (shifting) {
                 // Torque is interrupted while the shift completes — speed coasts (no power applied).
                 shiftElapsed += delta;
@@ -80,6 +88,10 @@
                         // Engine can't pull during the backfire vent — hold speed.
                         // Powered accel is gated; if the player releases throttle the
                         // targetSpeed < speed branch below will still bring them down.
+                    } else if (syngen.time() < accelHoldUntil) {
+                        // Post-hit recovery hold — speed was just scrubbed by the game.
+                        // Hold flat (no powered pull) until the delay clears, then the
+                        // car climbs back toward the untouched targetSpeed on its own.
                     } else {
                         // Rocket lifts the asymptote so speed can actually reach 150,
                         // and a 1.4× off-the-line boost makes the climb feel decisive.
@@ -185,8 +197,11 @@
                                 damage = Math.max(5, Math.round(damage * 0.25));
                             }
                             health = Math.max(0, health - damage);
+                            // Scrub actual speed only — leave targetSpeed alone so the
+                            // car (including a throttle-locked rocket) re-accelerates
+                            // back to it after a short recovery hold.
                             speed = Math.max(0, speed - 40);
-                            targetSpeed = Math.min(targetSpeed, speed);
+                            accelHoldUntil = syngen.time() + SLOWDOWN_RECOVERY_DELAY;
                             score -= 5;
                             stats.crashes += 1;
                             nearMissStreak = 0;
@@ -314,7 +329,7 @@
             }
 
             // Wrench approach / pickup. Generator emits the candidate slots
-            // and only materializes when health < WRENCH_HEALTH_GATE; here we
+            // and materializes them with a health-scaled probability; here we
             // just resolve once one is on the road.
             if (speed > 0 && wrench.active) {
                 wrench.distance -= (speed / 100) * 90 * delta;
@@ -322,8 +337,13 @@
                     wrench.consumed = true;
                     if (wrench.lane === lane && !jumping) {
                         stats.wrenchesCollected += 1;
+                        const wasFullHealth = health >= HEALTH_MAX;
                         health = Math.min(HEALTH_MAX, health + WRENCH_HEAL_AMOUNT);
-                        playWrenchPickup();
+                        if (wasFullHealth) {
+                            playWrenchPickupFull();
+                        } else {
+                            playWrenchPickup();
+                        }
                         announce(`Wrench collected. Health ${health} percent.`, {category: 'items'});
                         clearWrench();
                     }
@@ -331,10 +351,6 @@
                 if (wrench.active && wrench.distance <= WRENCH_DESPAWN_AT) {
                     clearWrench();
                 }
-            } else if (wrench.active && health >= WRENCH_HEALTH_GATE) {
-                // Player healed above the gate — drop any wrench still on the
-                // road so it doesn't linger as a dead pickup.
-                clearWrench();
             }
 
             // Ramp approach / hit. Generator emits ramps; here we resolve.
@@ -345,11 +361,12 @@
                     if (ramp.lane === lane && !jumping) {
                         stats.rampsHit += 1;
                         if (speed < RAMP_MIN_SPEED) {
-                            // Too slow — bounce backwards. Speed clamps to 0; the
-                            // player can throttle up again immediately afterward.
+                            // Too slow — bounce backwards. Speed clamps to 0;
+                            // targetSpeed is left alone so the car re-accelerates after
+                            // the brief recovery hold below.
                             playLandingImpact();
                             speed = 0;
-                            targetSpeed = Math.min(targetSpeed, 0);
+                            accelHoldUntil = syngen.time() + SLOWDOWN_RECOVERY_DELAY;
                             announce(`Bounced off the ramp.`, {category: 'items'});
                         } else {
                             startJump(rampAirtimeForSpeed(speed));

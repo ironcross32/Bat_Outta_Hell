@@ -47,8 +47,8 @@
         }
 
         // Wrench cadence is governed by the world generator's wrench slots,
-        // gated at materialization on health < WRENCH_HEALTH_GATE. There is
-        // no separate scheduler any more.
+        // materialized with a health-scaled probability (wrenchSpawnChance).
+        // There is no separate scheduler any more.
 
         // Sinkhole sound: a low ~82 Hz sine hum whose pitch is irregularly warbled by
         // bandlimited noise (LP at 8 Hz feeds the frequency AudioParam — ~8 pitch excursions
@@ -352,6 +352,117 @@
                 sub.start(t0);
                 sub.stop(t1 + 0.02);
             }
+        }
+
+        // Full-health wrench pickup — same three rising saw sweeps as the normal
+        // chime, but the final sweep reverses into a downward glide and a filtered
+        // noise "fizzle" so the pickup reads as "nothing to heal, dropped on the
+        // floor" rather than a triumphant collect.
+        function playWrenchPickupFull() {
+            const ac = syngen.context();
+            const dest = syngen.mixer.input();
+            const now = syngen.time();
+            const baseStart = 380;
+            const baseEnd = 1760;
+            const sweepDur = 0.25;
+            const attack = 0.030;
+            const stagger = 0.080;
+            const sawPeakDb = -10;
+            const subPeakDb = sawPeakDb - 6.02;
+
+            for (let i = 0; i < 3; i++) {
+                const mul = Math.pow(1.15, i);
+                const startHz = baseStart * mul;
+                const endHz = baseEnd * mul;
+                const t0 = now + i * stagger;
+                const t1 = t0 + sweepDur;
+
+                const lp = ac.createBiquadFilter();
+                lp.type = 'lowpass';
+                lp.frequency.value = endHz * 1.5;
+                lp.Q.value = 0.7;
+
+                const sawGain = ac.createGain();
+                sawGain.gain.setValueAtTime(0, t0);
+                sawGain.gain.linearRampToValueAtTime(syngen.fn.fromDb(sawPeakDb), t0 + attack);
+                sawGain.gain.linearRampToValueAtTime(0, t1);
+
+                const saw = ac.createOscillator();
+                saw.type = 'sawtooth';
+                saw.frequency.setValueAtTime(startHz, t0);
+                saw.frequency.exponentialRampToValueAtTime(endHz, t1);
+                saw.connect(lp).connect(sawGain).connect(dest);
+                sawGain.connect(reverb.send);
+                saw.start(t0);
+                saw.stop(t1 + 0.02);
+
+                const subGain = ac.createGain();
+                subGain.gain.setValueAtTime(0, t0);
+                subGain.gain.linearRampToValueAtTime(syngen.fn.fromDb(subPeakDb), t0 + attack);
+                subGain.gain.linearRampToValueAtTime(0, t1);
+
+                const sub = ac.createOscillator();
+                sub.type = 'triangle';
+                sub.frequency.setValueAtTime(startHz / 2, t0);
+                sub.frequency.exponentialRampToValueAtTime(endHz / 2, t1);
+                sub.connect(subGain).connect(dest);
+                subGain.connect(reverb.send);
+                sub.start(t0);
+                sub.stop(t1 + 0.02);
+            }
+
+            // Drop tail — a saw that glides down from the top of the last sweep,
+            // then a short band-limited noise burst that fizzles out under it.
+            const topMul = Math.pow(1.15, 2);
+            const dropStart = now + 2 * stagger + sweepDur;
+            const dropDur = 0.34;
+            const dropEnd = dropStart + dropDur;
+            const dropFromHz = baseEnd * topMul;
+            const dropToHz = baseStart * 0.45;
+
+            const dropLp = ac.createBiquadFilter();
+            dropLp.type = 'lowpass';
+            dropLp.frequency.setValueAtTime(dropFromHz * 1.5, dropStart);
+            dropLp.frequency.exponentialRampToValueAtTime(Math.max(120, dropToHz * 1.5), dropEnd);
+            dropLp.Q.value = 0.7;
+
+            const dropGain = ac.createGain();
+            dropGain.gain.setValueAtTime(0, dropStart);
+            dropGain.gain.linearRampToValueAtTime(syngen.fn.fromDb(sawPeakDb), dropStart + attack);
+            dropGain.gain.exponentialRampToValueAtTime(syngen.fn.fromDb(sawPeakDb - 40), dropEnd);
+
+            const drop = ac.createOscillator();
+            drop.type = 'sawtooth';
+            drop.frequency.setValueAtTime(dropFromHz, dropStart);
+            drop.frequency.exponentialRampToValueAtTime(dropToHz, dropEnd);
+            drop.connect(dropLp).connect(dropGain).connect(dest);
+            dropGain.connect(reverb.send);
+            drop.start(dropStart);
+            drop.stop(dropEnd + 0.02);
+
+            // Fizzle — white noise through a falling bandpass that thins to nothing.
+            const fizzStart = dropStart + 0.06;
+            const fizzDur = 0.32;
+            const fizzEnd = fizzStart + fizzDur;
+            const noise = ac.createBufferSource();
+            noise.buffer = makeWhiteNoiseBuffer();
+            noise.loop = true;
+
+            const fizzBp = ac.createBiquadFilter();
+            fizzBp.type = 'bandpass';
+            fizzBp.frequency.setValueAtTime(2400, fizzStart);
+            fizzBp.frequency.exponentialRampToValueAtTime(300, fizzEnd);
+            fizzBp.Q.value = 1.2;
+
+            const fizzGain = ac.createGain();
+            fizzGain.gain.setValueAtTime(0, fizzStart);
+            fizzGain.gain.linearRampToValueAtTime(syngen.fn.fromDb(sawPeakDb - 4), fizzStart + 0.02);
+            fizzGain.gain.exponentialRampToValueAtTime(syngen.fn.fromDb(sawPeakDb - 48), fizzEnd);
+
+            noise.connect(fizzBp).connect(fizzGain).connect(dest);
+            fizzGain.connect(reverb.send);
+            noise.start(fizzStart);
+            noise.stop(fizzEnd + 0.02);
         }
 
         // Gas can cadence is governed by the world generator's gas-can slots.

@@ -27,6 +27,12 @@
         const PROJECTILE_LIFETIME = 30;
         const PROJECTILE_MAX_DISTANCE = 150;
         const PROJECTILE_HIT_RADIUS = 12;
+        // Self-damage blast zone when a fired horn-ball detonates a gas can.
+        // Distance units (90 = 1 s at 100 mph); damage falls off linearly to 0
+        // at the edge. Kept generous so shooting a can near your bumper hurts
+        // without demanding pixel-perfect proximity.
+        const GASCAN_BLAST_RADIUS = 35;
+        const GASCAN_BLAST_DAMAGE = 40;
         const COIN_VALUE_MIN = 50;
         const COIN_VALUE_MAX = 200;
         const COIN_GAP_MIN = 2;
@@ -67,6 +73,21 @@
         let rocketPrevTargetSpeed = 0;
         let rocketBoostActive = false;
         let rocketBoostExpiresAt = 0;
+        // Accumulated active-rocket time for the current run (reset on each
+        // activation). Drives the points payout at run end and the rising
+        // chance that rocket pickups get swapped for obstacles mid-run.
+        let rocketRunSeconds = 0;
+        const ROCKET_END_POINTS_PER_MIN = 300;
+        const ROCKET_CONVERT_STEP = 0.02;  // +2% per full minute of rocket time
+        const ROCKET_CONVERT_CAP = 0.12;   // capped at 12%
+
+        // Chance a rocket pickup is converted into an obstacle while a rocket
+        // run is in progress — zero outside a run, climbing 2% per elapsed
+        // minute of rocket time up to 12%.
+        function rocketConversionChance() {
+            if (!activePowerUp || activePowerUp.type !== 'rocket') return 0;
+            return Math.min(ROCKET_CONVERT_CAP, ROCKET_CONVERT_STEP * Math.floor(rocketRunSeconds / 60));
+        }
 
         const coin = {
             lane: 1, distance: 100, active: false, consumed: false,
@@ -127,47 +148,60 @@
                 };
                 cleanup = () => { try { synth.stop(); lfo.stop(); } catch (e) {} };
             } else if (type === 'rocket') {
-                // Bandpassed noise pulse with flanger — repeating short "rocket idle" bursts.
+                // Bandpassed noise that breathes: swells up then decays back to a
+                // non-zero floor (never to silence) so it stays audible while you
+                // chase more at 150 mph, with a white-noise "burn" burst fired
+                // after each swell to read as the rocket engine igniting.
+                const ROCKET_FLOOR = 0.18;   // gain never drops below this — keeps it audible
+                const ROCKET_PEAK = 0.9;
                 const src = ac.createBufferSource();
                 src.buffer = makeWhiteNoiseBuffer();
                 src.loop = true;
-                const flangerDelay = ac.createDelay(0.02);
-                flangerDelay.delayTime.value = 0.004;
-                const flangerFeedback = ac.createGain();
-                flangerFeedback.gain.value = 0.75;
-                const flangerLFO = ac.createOscillator();
-                flangerLFO.type = 'sine';
-                flangerLFO.frequency.value = 0.3;
-                const flangerLFOGain = ac.createGain();
-                flangerLFOGain.gain.value = 0.003;
-                flangerLFO.connect(flangerLFOGain).connect(flangerDelay.delayTime);
-                flangerLFO.start();
-                // dry + wet (flanged) both feed into bandpass
-                src.connect(flangerDelay);
-                flangerDelay.connect(flangerFeedback).connect(flangerDelay);
+                src.start();
+
+                // Tonal body — bandpassed noise that swells and decays.
                 const bp = ac.createBiquadFilter();
                 bp.type = 'bandpass';
                 bp.frequency.value = 900;
                 bp.Q.value = 4;
                 src.connect(bp);
-                flangerDelay.connect(bp);
                 const ng = ac.createGain();
-                ng.gain.value = 0;
+                ng.gain.value = ROCKET_FLOOR;
                 bp.connect(ng).connect(proxGain);
-                src.start();
-                cycleTotal = 0.5;
+
+                // Burn burst — broader lowpassed noise that fires just after the
+                // swell crests, like the engine catching. Own gain so it punches
+                // over the sustained body, then falls away before the next cycle.
+                const burnLp = ac.createBiquadFilter();
+                burnLp.type = 'lowpass';
+                burnLp.frequency.value = 1400;
+                src.connect(burnLp);
+                const burnGain = ac.createGain();
+                burnGain.gain.value = 0;
+                burnLp.connect(burnGain).connect(proxGain);
+
+                cycleTotal = 0.9;
                 scheduleCycle = (t0) => {
+                    // Body: floor → peak → back to floor, never silent.
                     const g = ng.gain;
                     g.cancelScheduledValues(t0);
-                    g.setValueAtTime(0, t0);
-                    g.linearRampToValueAtTime(0.9, t0 + 0.04);
-                    g.exponentialRampToValueAtTime(0.001, t0 + 0.35);
-                    g.setValueAtTime(0, t0 + cycleTotal);
+                    g.setValueAtTime(ROCKET_FLOOR, t0);
+                    g.linearRampToValueAtTime(ROCKET_PEAK, t0 + 0.22);
+                    g.exponentialRampToValueAtTime(ROCKET_FLOOR, t0 + cycleTotal);
+                    // Burn burst: ignites just after the swell crests, fast decay.
+                    const b = burnGain.gain;
+                    b.cancelScheduledValues(t0);
+                    b.setValueAtTime(0, t0 + 0.20);
+                    b.linearRampToValueAtTime(0.7, t0 + 0.26);
+                    b.exponentialRampToValueAtTime(0.001, t0 + 0.6);
+                    b.setValueAtTime(0, t0 + cycleTotal);
                 };
                 setDoppler = (mul) => {
-                    bp.frequency.setTargetAtTime(900 * mul, syngen.time(), 0.03);
+                    const now = syngen.time();
+                    bp.frequency.setTargetAtTime(900 * mul, now, 0.03);
+                    burnLp.frequency.setTargetAtTime(1400 * mul, now, 0.03);
                 };
-                cleanup = () => { try { src.stop(); flangerLFO.stop(); } catch (e) {} };
+                cleanup = () => { try { src.stop(); } catch (e) {} };
             } else {
                 // hornBall: two-ping bouncing FM ball, bell-ish (3.0× modulator).
                 const synth = syngen.synth.fm({
@@ -268,18 +302,24 @@
             const c = target || coin;
             if (!c.prop) return;
             const peak = syngen.fn.fromDb(-9);
-            const half = 0.375;
+            const attack = 0.015;
+            // Low note is a short lead-in; the high note is 4× its length and
+            // begins while the low note is still fading (overlap), then runs to
+            // the end of the cycle so there's no trailing silence.
+            const overlap = 0.05;
+            const firstLen = (COIN_CYCLE_TOTAL + overlap) / 5; // low note ≈ 0.16s
+            const secondStart = firstLen - overlap;            // high note onset, mid low-note fade
             const gA = c.prop.gA;
             const gB = c.prop.gB;
             gA.cancelScheduledValues(t0);
             gA.setValueAtTime(0, t0);
-            gA.linearRampToValueAtTime(peak, t0 + 0.02);
-            gA.linearRampToValueAtTime(0, t0 + half);
+            gA.linearRampToValueAtTime(peak, t0 + attack);
+            gA.linearRampToValueAtTime(0, t0 + firstLen);
             gA.setValueAtTime(0, t0 + COIN_CYCLE_TOTAL);
             gB.cancelScheduledValues(t0);
             gB.setValueAtTime(0, t0);
-            gB.setValueAtTime(0, t0 + half);
-            gB.linearRampToValueAtTime(peak, t0 + half + 0.02);
+            gB.setValueAtTime(0, t0 + secondStart);
+            gB.linearRampToValueAtTime(peak, t0 + secondStart + attack);
             gB.linearRampToValueAtTime(0, t0 + COIN_CYCLE_TOTAL);
             c.nextCycleAt = t0 + COIN_CYCLE_TOTAL;
         }
@@ -949,7 +989,8 @@
                     gameOver("You blew your engine by activating a rocket when it was critically damaged!");
                     return;
                 }
-                activePowerUp = { type, expiresAt: now + ROCKET_DURATION, peakRemaining: ROCKET_DURATION };
+                activePowerUp = { type, expiresAt: now + ROCKET_DURATION, peakRemaining: ROCKET_DURATION, startedAt: now };
+                rocketRunSeconds = 0;
                 rocketPrevTargetSpeed = targetSpeed;
                 targetSpeed = ROCKET_TARGET_SPEED;
                 buildRocketWind();
@@ -976,7 +1017,18 @@
                 rocketBoostActive = false;
                 targetSpeed = Math.min(rocketPrevTargetSpeed, 100);
                 clearCoin();
-                if (reason === 'expired') announce(`Rocket expired.`, {category: 'powerups'});
+                // Tally the run length and pay out 300 points per minute aloft.
+                const duration = Math.max(0, syngen.time() - activePowerUp.startedAt);
+                stats.rocketDurations.push(duration);
+                const bonus = Math.round((duration / 60) * ROCKET_END_POINTS_PER_MIN);
+                if (bonus > 0) score += bonus;
+                if (reason === 'expired') {
+                    announce(
+                        bonus > 0
+                            ? `Rocket expired. Plus ${bonus} points for ${Math.round(duration)} seconds of rocket time.`
+                            : `Rocket expired.`,
+                        {category: 'powerups'});
+                }
             } else if (type === 'hornBall') {
                 if (reason === 'expired') announce(`Horn ball expired.`, {category: 'powerups'});
                 // Projectile already in flight is allowed to live out its own timer.
@@ -987,6 +1039,7 @@
         function updateActivePowerUp(delta) {
             if (!activePowerUp) return;
             if (activePowerUp.type === 'rocket') {
+                rocketRunSeconds += delta;
                 if (rocketBoostActive && syngen.time() >= rocketBoostExpiresAt) {
                     rocketBoostActive = false;
                     targetSpeed = ROCKET_TARGET_SPEED;
@@ -1108,15 +1161,15 @@
                 && Math.abs(gasCan.distance - projectile.distance) < PROJECTILE_HIT_RADIUS) {
                 playExplosion('large');
                 rumble.pulse(0.5, 1.0, 0.30);
-                const penalty = 20 + Math.floor(rand() * 31);
+                const penalty = 150 + Math.floor(rand() * 351);
                 score -= penalty;
                 stats.hornBallsMissed += 1;
                 const dx = projectile.distance;
                 const dy = (lane - gasCan.lane) * LANE_SPACING;
                 const r = Math.hypot(dx, dy);
                 const shielded = shieldCount > 0;
-                if (r < 12 && !shielded) {
-                    const damage = Math.round(40 * (1 - r / 12));
+                if (r < GASCAN_BLAST_RADIUS && !shielded) {
+                    const damage = Math.round(GASCAN_BLAST_DAMAGE * (1 - r / GASCAN_BLAST_RADIUS));
                     health = Math.max(0, health - damage);
                     announce(`Gas can destroyed. Minus ${penalty}. Blast damage minus ${damage} health.`, {category: 'powerups'});
                     if (health === 0) {
@@ -1129,6 +1182,20 @@
                     announce(`Gas can destroyed. Minus ${penalty}.`, {category: 'powerups'});
                 }
                 clearGasCan();
+                clearProjectile();
+                return;
+            }
+            if (powerUpPickup.active && powerUpPickup.lane === projectile.lane
+                && Math.abs(powerUpPickup.distance - projectile.distance) < PROJECTILE_HIT_RADIUS) {
+                // Destroying a power-up: no blast, no vehicle damage, just a
+                // points hit for wasting a beneficial pickup.
+                playExplosion('small');
+                rumble.pulse(0, 1.0, 0.18);
+                const penalty = 50 + Math.floor(rand() * 101);
+                score -= penalty;
+                stats.hornBallsMissed += 1;
+                announce(`Power-up destroyed. Minus ${penalty}.`, {category: 'powerups'});
+                clearPowerUpPickup();
                 clearProjectile();
                 return;
             }

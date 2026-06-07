@@ -214,6 +214,29 @@
             synth.stop(now + duration);
         }
 
+        // Lane-change cue. An FM voice whose mod depth collapses over the first
+        // ~40 ms, so the attack rings with metallic sidebands (a "click") and
+        // then settles into a clean tone — this transient cuts through a phone
+        // speaker far better than the plain playCue sine did. Duration is ~1.5x
+        // the old 0.15 s cue so it's easier to register on mobile.
+        function playLaneChangeCue(frequency) {
+            const now = syngen.time();
+            const duration = 0.22;
+            const synth = syngen.synth.fm({
+                carrierFrequency: frequency,
+                carrierType: 'triangle',
+                gain: syngen.fn.fromDb(-12),
+                modDepth: frequency * 2.5,
+                modFrequency: frequency * 3.1,   // non-integer ratio → inharmonic click
+                modType: 'square',
+            }).connect(syngen.mixer.input());
+            // Mod depth decays fast: sidebands sound only during the attack.
+            synth.param.mod.depth.setValueAtTime(frequency * 2.5, now);
+            synth.param.mod.depth.exponentialRampToValueAtTime(Math.max(1, frequency * 0.05), now + 0.04);
+            synth.param.gain.exponentialRampToValueAtTime(syngen.const.zeroGain, now + duration);
+            synth.stop(now + duration);
+        }
+
         function playThrottleClick(t) {
             const ctx = syngen.context();
             const now = syngen.time();
@@ -412,6 +435,17 @@
             sub.stop(now + dur + 0.02);
         }
 
+        // Cancel any misfire/backfire bursts still queued from a damaged run and
+        // clear the residual misfire grit envelope. Called on restart so stray
+        // timers can't fire a misfire/backfire into a fresh, full-health engine.
+        function clearEngineDamageTimers() {
+            for (let i = 0; i < pendingEngineDamageTimers.length; i++) {
+                clearTimeout(pendingEngineDamageTimers[i]);
+            }
+            pendingEngineDamageTimers.length = 0;
+            misfireTimbre = 0;
+        }
+
         // Per-frame scheduler: at low health, fire misfires + backfires on
         // independent random timers. Both can come single or in clusters. A
         // backfire also kicks off a brief "engine can't pull" window that
@@ -428,7 +462,7 @@
                         ? 1 + Math.floor(Math.random() * (exaggerated ? 4 : 3))
                         : 1;
                     for (let i = 0; i < cluster; i++) {
-                        setTimeout(triggerMisfire, i * (35 + Math.random() * 55));
+                        pendingEngineDamageTimers.push(setTimeout(triggerMisfire, i * (35 + Math.random() * 55)));
                     }
                     const minGap = Math.max(0.2, 1.6 - intensity * 1.2);
                     const maxGap = Math.max(0.5, 3.5 - intensity * 2.5);
@@ -448,7 +482,7 @@
                         : 1;
                     for (let i = 0; i < cluster; i++) {
                         const t = i * (0.08 + Math.random() * 0.14);
-                        setTimeout(() => playBackfire(intensity), t * 1000);
+                        pendingEngineDamageTimers.push(setTimeout(() => playBackfire(intensity), t * 1000));
                     }
                     backfireActiveUntil = now + 0.35 + cluster * 0.18 + intensity * 0.2;
                     // No direct speed deduction — the backfire window simply

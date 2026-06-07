@@ -116,7 +116,7 @@
             if (dir < 0 && lane > 0) lane--;
             else if (dir > 0 && lane < 2) lane++;
             if (lane !== prev) {
-                playCue(300 + lane * 100, 0.15);
+                playLaneChangeCue(300 + lane * 100);
                 announce(laneNames[lane], {category: 'lanes'});
                 // Speed bleed: each change scrubs speed; rapid chain compounds.
                 if (!jumping) {

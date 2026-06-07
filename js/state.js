@@ -126,6 +126,10 @@
         // 0–1 tonal-disruption envelope set by triggerMisfire, decayed per frame in
         // updateEngineAudio. Drives extra FM mod depth so a miss reads as rasp, not silence.
         let misfireTimbre = 0;
+        // setTimeout IDs for misfire/backfire bursts still queued from tickEngineDamage.
+        // A damaged run can leave several in flight at game over; they must be cancelled
+        // on restart (clearEngineDamageTimers) so they don't gate/grit a fresh, full-health engine.
+        let pendingEngineDamageTimers = [];
 
         // ===== Near-miss streak =====
         // Consecutive near misses (nearMissFactor > 0.7). Resets on any non-near-miss
@@ -158,6 +162,7 @@
             rampsMissed: 0,
             totalAirTime: 0,
             coinsCollected: 0,
+            rocketDurations: [],
         };
         function resetStats() {
             stats.speedSum = 0;
@@ -180,6 +185,7 @@
             stats.rampsMissed = 0;
             stats.totalAirTime = 0;
             stats.coinsCollected = 0;
+            stats.rocketDurations = [];
         }
 
         // ===== Low-speed penalty =====
@@ -213,11 +219,13 @@
         const GAS_CAN_FILL_MAX = 0.50;        // half tank
 
         // ===== Wrench / repair =====
-        // Wrenches only appear once the player has actually taken damage (health < 75)
-        // and arrive more frequently when things are dire (health < 25). They restore
-        // a chunk of health on same-lane pickup.
-        const WRENCH_HEALTH_GATE = 75;        // no wrench spawns above this
-        const WRENCH_CRITICAL_HEALTH = 25;    // tighter spawn window below this
+        // Wrenches can appear at any health, but their spawn likelihood scales
+        // with how hurt you are: nearly certain when health is low, down to a
+        // small-but-nonzero floor at full health. There's no clustering — miss
+        // one and you wait for the next (see WORLD_CLUSTER_WINDOW_UNITS spacing).
+        // They restore a chunk of health on same-lane pickup.
+        const WRENCH_SPAWN_CHANCE_MAX = 0.95; // chance a wrench slot spawns at 0 health
+        const WRENCH_SPAWN_CHANCE_MIN = 0.12; // chance a wrench slot spawns at full health
         const WRENCH_HEAL_AMOUNT = 30;        // health points restored per pickup
         const WRENCH_DESPAWN_AT = -50;
         const WRENCH_GAIN_MIN_DB = -22;
@@ -230,6 +238,16 @@
             prop: null,
             nextCycleAt: 0,
         };
+
+        // Probability that a generator-placed wrench slot actually spawns,
+        // scaled by current health. Linear from WRENCH_SPAWN_CHANCE_MAX at 0
+        // health down to WRENCH_SPAWN_CHANCE_MIN at full health, so wrenches
+        // grow rarer as you heal but never vanish entirely.
+        function wrenchSpawnChance() {
+            const t = Math.max(0, Math.min(1, health / HEALTH_MAX));
+            return WRENCH_SPAWN_CHANCE_MAX
+                + (WRENCH_SPAWN_CHANCE_MIN - WRENCH_SPAWN_CHANCE_MAX) * t;
+        }
 
         // Acoustic tuning
         const OBSTACLE_CARRIER_HZ = 425;   // ~half octave below the previous 600 Hz tone
@@ -320,6 +338,15 @@
         const ACCEL_A0 = 21;        // mph/s at v=0
         const ACCEL_V_INF = 112;    // asymptotic top speed (mph) — accel = 0 here
         const DECEL_RATE = 18;      // mph/s when targetSpeed < speed (engine brake + coast)
+        // ===== Game-imposed slowdown recovery =====
+        // When the game itself scrubs speed (obstacle crash, ramp bounce, car-on-car
+        // bump), we now leave targetSpeed untouched and only knock down the actual
+        // speed, then suppress powered re-acceleration until accelHoldUntil. This
+        // gives a short, deliberate stall before the car climbs back to whatever the
+        // throttle is still asking for — and, critically, it lets a rocket-locked car
+        // recover on its own, since the player can't touch the throttle during a rocket.
+        const SLOWDOWN_RECOVERY_DELAY = 0.6; // seconds of no powered accel after a hit
+        let accelHoldUntil = 0;
         // Upshift road speeds (gear 1→2, 2→3, 3→4). Wider in low gears, tighter up top —
         // gives the familiar "long first, short fourth" spacing of a 4-speed auto.
         const SHIFT_POINTS_UP = [22, 48, 75];

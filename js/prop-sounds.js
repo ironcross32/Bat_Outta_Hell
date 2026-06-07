@@ -318,6 +318,12 @@
         const RAMP_MAX_AIRTIME = 15;
         const RAMP_MAX_AIRTIME_SPEED = 150;
         const RAMP_DESPAWN_AT = -50;
+        // Airborne under a rocket: with no rolling resistance the rockets keep
+        // pushing, so instead of bleeding speed the car climbs toward this cap.
+        // On landing the rocket (if still active) settles back to its ground
+        // cruise speed (ROCKET_TARGET_SPEED = 150). Engine stays at idle aloft.
+        const ROCKET_AIR_SPEED = 175;
+        const ROCKET_AIR_BOOST_RATE = 20;   // mph/s climb while airborne
         const RAMP_GAIN_MIN_DB = -19;
         const RAMP_GAIN_MAX_DB = -3;
         // Jump rev arc: a quick blip up to redline, then a much slower decay back

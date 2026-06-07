@@ -147,6 +147,10 @@
             );
             lines.push(`Total air time: ${airSecs} seconds.`);
             lines.push(`Coins collected: ${stats.coinsCollected}.`);
+            const longestRocket = stats.rocketDurations.length > 0
+                ? Math.max(...stats.rocketDurations)
+                : 0;
+            lines.push(`Longest rocket run: ${longestRocket.toFixed(1)} seconds.`);
 
             statsList.innerHTML = '';
             for (const text of lines) {
@@ -198,6 +202,12 @@
             announce(`Game over.${reasonPhrase} Final score ${score}. Run time ${runtimeStr}.`);
             restartBtn.focus();
             fadeAudioOut(0.5, () => {
+                // If the player hit Play Again during the 0.5 s fade, beginRun has
+                // already started a fresh run (gameRunning === true) and re-spawned
+                // the world. Running this stale teardown now would destroy those
+                // freshly-spawned props + the CPU opponent's engine drone a fraction
+                // of a second into the new game — audio dropping out for no reason.
+                if (gameRunning) return;
                 clearObstacle();
                 clearGasCan();
                 clearWrench();
@@ -271,11 +281,40 @@
             nextMisfireAt = 0;
             nextBackfireAt = 0;
             backfireActiveUntil = 0;
+            accelHoldUntil = 0;
+            clearEngineDamageTimers();
             if (misfireGate) {
                 const now = syngen.time();
                 misfireGate.gain.cancelScheduledValues(now);
                 misfireGate.gain.setValueAtTime(1, now);
             }
+            // Snap the engine voice back to its clean idle baseline. At game over
+            // the frame loop stops, freezing whatever damaged values the dying run
+            // last wrote — a high FM mod depth (growl/grit) and a clamped-down
+            // filter cutoff. setTargetAtTime never expires, so without this the new
+            // run inherits that frozen automation and only eases back to clean over
+            // ~0.5 s, leaving the engine's growl/body sounding wrong at full health
+            // right after a restart. cancelScheduledValues + setValueAtTime drops the
+            // stale automation and starts clean; updateEngineAudio takes over next frame.
+            // (cancelScheduledValues only clears the param's own events, not the
+            // permanently-connected drift LFOs, so the wander survives.)
+            if (engineSynth) {
+                const now = syngen.time();
+                engineSynth.param.frequency.cancelScheduledValues(now);
+                engineSynth.param.frequency.setValueAtTime(ENGINE_FREQ_MIN, now);
+                engineSynth.param.mod.frequency.cancelScheduledValues(now);
+                engineSynth.param.mod.frequency.setValueAtTime(ENGINE_FREQ_MIN * 0.5, now);
+                engineSynth.param.mod.depth.cancelScheduledValues(now);
+                engineSynth.param.mod.depth.setValueAtTime(ENGINE_MOD_DEPTH_MIN, now);
+                if (engineSynth.filter) {
+                    engineSynth.filter.frequency.cancelScheduledValues(now);
+                    engineSynth.filter.frequency.setValueAtTime(ENGINE_FILTER_MIN, now);
+                }
+            }
+            // Landing-load roughness state isn't otherwise reset; a game over mid-
+            // touchdown would carry landingLoadActive/landingDeficit into the new run.
+            landingLoadActive = false;
+            landingDeficit = 0;
             gameStartTime = Date.now();
             seedRng(gameStartTime ^ Math.floor(performance.now() * 1000));
             lastThrottleBucket = 0;
@@ -334,6 +373,19 @@
                 resumeGame();
             } else {
                 pauseGame();
+            }
+        });
+
+        // Click / tap / Enter on the canvas starts the game when it hasn't run
+        // yet, mirroring the Start button. Once a game is running, the canvas
+        // is inert here so taps/Enter fall through to the gameplay controls.
+        canvas.addEventListener('click', () => {
+            if (!gameRunning) startGame();
+        });
+        canvas.addEventListener('keydown', (e) => {
+            if (!gameRunning && e.key === 'Enter') {
+                e.preventDefault();
+                startGame();
             }
         });
 

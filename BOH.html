@@ -388,24 +388,29 @@
             <h2 id="instructions-title">How to Play</h2>
 
             <p>Bat Out Of Hell uses spatial audio and screen reader announcements to assist visually impaired players. Headphones strongly recommended.</p>
+            <P>
+                How many points can you collect in this arcade-style driving game before fuel runs out or you wreck your car?
+                Avoid <button class="sound-preview-btn" onclick="previewObstacle()">obstacles</button>. They hurt more the faster you're going. If you're feeling daring, you can veer off at the last second to get a 'near miss' bonus that scales with speed.
+                Collect <button class="sound-preview-btn" onclick="previewGasCan()">gas cans</button> to keep your tank full.
+            </P>
             <p><em>Highlighted terms below are buttons — press them to hear a sample of that sound.</em></p>
 
             <h3>Visual glossary</h3>
             <p><em>What each item looks like</em></p>
-            <ul class="glossary" aria-label="Visual glossary of game items">
+            <ul class="glossary" aria-hidden="true">
                 <li>
                     <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
                         <rect x="13" y="6" width="18" height="32" fill="#0076ff"/>
                         <rect x="14" y="3" width="6" height="5" fill="#ffffaa"/>
                         <rect x="24" y="3" width="6" height="5" fill="#ffffaa"/>
                     </svg>
-                    <span class="name">Your car</span>
+                    <span class="name" aria-hidden="true">Your car</span>
                 </li>
                 <li class="playable" onclick="previewObstacle()" title="Click to hear">
                     <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
                         <rect x="6" y="14" width="32" height="16" fill="#ff3333"/>
                     </svg>
-                    <span class="name">Obstacle</span>
+                    <span class="name" aria-hidden="true">Obstacle</span>
                 </li>
                 <li class="playable" onclick="previewGasCan()" title="Click to hear">
                     <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
@@ -414,7 +419,7 @@
                         <rect x="26" y="6" width="6" height="4" fill="#888"/>
                         <rect x="13" y="18" width="16" height="3" fill="#1f4717"/>
                     </svg>
-                    <span class="name">Gas can</span>
+                    <span class="name" aria-hidden="true">Gas can</span>
                 </li>
                 <li class="playable" onclick="previewWrench()" title="Click to hear">
                     <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
@@ -425,44 +430,44 @@
                             <circle cx="22" cy="36" r="2.5" fill="#3a3a44" stroke="none"/>
                         </g>
                     </svg>
-                    <span class="name">Wrench</span>
+                    <span class="name" aria-hidden="true">Wrench</span>
                 </li>
                 <li>
                     <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
                         <rect x="22" y="20" width="20" height="20" fill="#ffd633"/>
                         <circle cx="14" cy="22" r="9" fill="#ffd633"/>
                     </svg>
-                    <span class="name">Coin</span>
+                    <span class="name" aria-hidden="true">Coin</span>
                 </li>
                 <li class="playable" onclick="previewPowerUp('shield')" title="Click to hear">
                     <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
                         <rect x="2" y="2" width="40" height="40" fill="#33ccff"/>
                     </svg>
-                    <span class="name">Shield power-up</span>
+                    <span class="name" aria-hidden="true">Shield power-up</span>
                 </li>
                 <li class="playable" onclick="previewPowerUp('rocket')" title="Click to hear">
                     <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
                         <rect x="2" y="2" width="40" height="40" fill="#ff8833"/>
                     </svg>
-                    <span class="name">Rocket power-up</span>
+                    <span class="name" aria-hidden="true">Rocket power-up</span>
                 </li>
                 <li class="playable" onclick="previewPowerUp('hornBall')" title="Click to hear">
                     <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
                         <rect x="2" y="2" width="40" height="40" fill="#cc66ff"/>
                     </svg>
-                    <span class="name">Horn ball power-up</span>
+                    <span class="name" aria-hidden="true">Horn ball power-up</span>
                 </li>
                 <li>
                     <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
                         <circle cx="22" cy="22" r="8" fill="#ffff66"/>
                     </svg>
-                    <span class="name">Horn ball (fired)</span>
+                    <span class="name" aria-hidden="true">Horn ball (fired)</span>
                 </li>
                 <li>
                     <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
                         <polygon points="4,34 40,34 33,12 11,12" fill="#66cc66"/>
                     </svg>
-                    <span class="name">Ramp</span>
+                    <span class="name" aria-hidden="true">Ramp</span>
                 </li>
                 <li>
                     <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
@@ -470,50 +475,65 @@
                         <rect x="2" y="2" width="40" height="40" fill="rgba(15,3,3,0.82)"/>
                         <line x1="2" y1="22" x2="42" y2="22" stroke="#8b0000" stroke-width="3"/>
                     </svg>
-                    <span class="name">Sinkhole</span>
+                    <span class="name" aria-hidden="true">Sinkhole</span>
                 </li>
                 <li>
                     <svg viewBox="0 0 44 44" aria-hidden="true" focusable="false">
                         <circle cx="22" cy="14" r="6" fill="#ffeb66"/>
                     </svg>
-                    <span class="name">Air coin (over ramp)</span>
+                    <span class="name" aria-hidden="true">Air coin (over ramp)</span>
                 </li>
             </ul>
 
             <h3>Driving controls</h3>
-            <p>Press <strong>Start Game</strong> to begin, then use the keyboard to drive.</p>
+            <p>Press <strong>Start Game</strong> or click / tap the game area to begin, then use the keyboard, a controller, or touch controls on mobile devices to drive.</p>
+            <h4>Keyboard controls</h4>
             <ul>
-                <li>Use <strong>Left/Right Arrow Keys</strong> to switch between 3 lanes (Left, Middle, Right).</li>
-                <li>Use <strong>Up/Down Arrow Keys</strong> to adjust your speed.</li>
-                <li>Avoid <button class="sound-preview-btn" onclick="previewObstacle()">obstacles</button>. An obstacle emits a tone that increases in pitch as it approaches, and falls as it passes by. Its position in the stereo field indicates which lane it's in.</li>
-                <li>Collect <button class="sound-preview-btn" onclick="previewGasCan()">gas cans</button> (three metallic noise bursts) by being in their lane when they reach you. Fuel burns faster the harder you push the throttle.</li>
+                <li>Use <strong>Left/Right Arrow Keys</strong> to switch between 3 lanes.</li>
+                <li>Use <strong>Up/Down Arrow Keys</strong> to adjust your speed. Tap for small adjustments, hold for larger ones.</li>
                 <li>Press <strong>G</strong> to hear your current fuel level.</li>
                 <li>Press <strong>P</strong> to hear your current score (points).</li>
                 <li>Press <strong>S</strong> to hear your current speed.</li>
                 <li>Press <strong>H</strong> to hear your current vehicle health.</li>
-                <li>Hold <strong>Space</strong> to honk the horn. Honking accepts a pending race challenge, and fires a projectile when the horn-ball power-up is active.</li>
+                <li>Hold <strong>Space</strong> to honk the horn. May do other things when certain power-ups are active.</li>
             </ul>
-
+            <h4>Gamepad</h4>
+                <ul>
+                <li><strong>Left stick</strong> steers between lanes. Hold it past the threshold to keep moving — lane changes repeat every half second, matching the arrow keys.</li>
+                <li><strong>Right trigger</strong> accelerates, <strong>Left trigger</strong> decelerates. Both are analog.</li>
+                <li><strong>A</strong> honks the horn.</li>
+                <li><strong>Left bumper (LB)</strong> is a shift modifier. Hold it and press a face button for the shifted action: <strong>LB+A</strong> speaks your speed, <strong>LB+B</strong> speaks your score, <strong>LB+X</strong> speaks your fuel level, <strong>LB+Y</strong> speaks your health.</li>
+                <li><strong>Right bumper (RB)</strong> activates the most recent power-up in your queue.</li>
+                <li><strong>Start / Menu</strong> toggles pause.</li>
+            </ul>
+            <p>On the title screen and the game-over screen, the <strong>D-pad</strong> moves focus between on-screen buttons and <strong>A</strong> activates the focused one. In-game events are represented by unique controller rumbles.</p>
+            <h4Touch controls</h4>
+            <p>Bat Outta Hell can be played on a mobile phone with several caveats.</p>
+            <ol>
+                <li>On both iOS and Android, screen readers must be turned off to reach the touch controls</li>
+                <li>Under Options, there's a checkbox and a set of controls to enable and configure TTS</li>
+                <li>It may be better to play this game and become familiar with it on PC / Mac first, then turn off the checkboxes for the speech announcements in Options, which will help ducking on iOS</li>
+                <li>The ducking on iOS when the tts fires and VoiceOver is off is outside the developer's control</li>
+            </ol>
+            <p>The play area is divided into 3 zones. A central area, and two vertical strips on either side of it. The vertical strips are your horn buttons, while the central zone will accept the remainder of the touch controls.</p>
+            <p>The touch controls / gestures for the central zone are as follows:</p>
+            <ul
+                <li>Single finger swipe / slide up and down: throttle</li>
+                <li>Single finger flick left / right: Steering</li>
+                <li>Two finger single tap: Activate a power-up</li>
+                <li>Three finger single tap: Pause or unpause the game</li>
+                <li>Two finger flick up: Announce score</li>
+                <li>Two finger flick down: Announce speed</li>
+                <li>Two finger flick left: Announce fuel</li>
+                <li>Two finger flick right: Announce health</li>
+            </ul>
             <h3>Power-ups</h3>
             <p>Collect <strong>power-ups</strong> (up to three at a time) by being in their lane. Press <strong>Shift</strong> to activate the most recent one. Only one can be active at a time.</p>
             <ul>
                 <li><button class="sound-preview-btn sound-preview-btn-bold" onclick="previewPowerUp('shield')">Shield</button> absorbs one obstacle hit with no damage or speed loss. Surviving the whole duration of the power-up at an average speed of 50 mph or more grants a points bonus.</li>
-                <li><button class="sound-preview-btn sound-preview-btn-bold" onclick="previewPowerUp('rocket')">🚀 Rocket</button> Makes you go like a bat out of hell for 20 seconds. You get 5 additional seconds for each gas can you collect while the rocket is active. Try to collect as many coins as you can to get even more points!</li>
+                <li><button class="sound-preview-btn sound-preview-btn-bold" onclick="previewPowerUp('rocket')">🚀 Rocket</button> Makes you go like a bat out of hell for 20 seconds. You can extend your rocket duration by picking more of them up while the power-up is active. Extensions take effect immediately, you need not activate them manually. Try to collect as many coins as you can to get even more points!</li>
                 <li><button class="sound-preview-btn sound-preview-btn-bold" onclick="previewPowerUp('hornBall')">Horn ball</button> Ever wanted to shoot balls out the front of your car with your horn? Now you can! Anything the ball hits gets destroyed and you get points. Chain them together for an even bigger bonus, but be careful of hitting gas cans.</li>
                 <li>When an active power-up runs out, a <button class="sound-preview-btn" onclick="previewPowerUpExpire()">power-up expiring</button> sound plays — a descending sweep will play to let you know.</li>
-            </ul>
-
-            <h3>Gamepad</h3>
-            <p>A standard controller is fully supported with haptic feedback.</p>
-            <ul>
-                <li><strong>Left stick</strong> steers between lanes. Hold it past the threshold to keep moving — lane changes repeat every half second, matching the arrow keys.</li>
-                <li><strong>Right trigger</strong> accelerates, <strong>Left trigger</strong> decelerates. Both are analog — a half-pulled trigger ramps the throttle at half speed.</li>
-                <li><strong>A</strong> honks the horn — press and hold mirrors the keyboard space bar (also fires the horn-ball projectile when that power-up is active, and accepts a pending race challenge).</li>
-                <li><strong>Left bumper (LB)</strong> is a shift modifier. Hold it and press a face button for the shifted action: <strong>LB+A</strong> speaks your speed, <strong>LB+B</strong> speaks your score, <strong>LB+X</strong> speaks your fuel level, <strong>LB+Y</strong> speaks your health.</li>
-                <li><strong>Right bumper (RB)</strong> activates the most recent power-up in your queue (same as Shift on the keyboard).</li>
-                <li><strong>Start / Menu</strong> toggles pause.</li>
-                <li>On the title screen and the game-over screen, the <strong>D-pad</strong> moves focus between on-screen buttons and <strong>A</strong> activates the focused one — so Start, Play Again, and the statistics toggle are all reachable without leaving the controller.</li>
-                <li>Rumble channels reinforce the audio cues: obstacles rumble the right side as they approach and pass; sink holes alternate left and right; ramps thump on launch and on landing; horn-ball fires, hits, and gas-can blasts each have their own signature pulse. Power-up pickups have a recognisable three-pulse-right plus long-left-half pattern as they approach.</li>
             </ul>
         </div>
     </div>

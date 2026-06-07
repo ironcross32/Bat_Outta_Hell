@@ -291,6 +291,13 @@
             playLandingImpact();
             rumble.pulse(1.0, 0, 0.18);
             clearAirCoin();
+            // If a rocket carried the car aloft it overspeeds to ROCKET_AIR_SPEED;
+            // back on the ground rolling resistance returns, so pull the target
+            // back to the rocket's ground cruise (150) and let the normal decel
+            // branch bleed it down.
+            if (activePowerUp && activePowerUp.type === 'rocket') {
+                targetSpeed = ROCKET_TARGET_SPEED;
+            }
             // Capture the gap to targetSpeed at touchdown so the engine-load
             // recovery in updateEngineAudio can normalise its envelope against it.
             landingDeficit = Math.max(0, targetSpeed - speed);
