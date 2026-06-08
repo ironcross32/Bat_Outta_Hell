@@ -117,6 +117,13 @@
         function resumeGame() {
             if (!gameRunning || !paused) return;
             paused = false;
+            // A screen-lock pause leaves iOS's AudioContext suspended; unlike a
+            // button pause (where the context keeps running) it stays suspended
+            // after unlock, killing all audio while leaving TTS — a separate
+            // subsystem — working. Resume is always driven by a user gesture
+            // (button/binding/tap), which is exactly what iOS requires to
+            // un-suspend, so resume the context here. Harmless when not suspended.
+            syngen.context().resume();
             playPauseSound();
             fadeAudioChannelsTo(null, 0.15);
             requestWakeLock();
