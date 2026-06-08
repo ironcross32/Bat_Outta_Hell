@@ -1,4 +1,34 @@
-﻿        function formatRunTime(seconds) {
+﻿        // Screen Wake Lock — keep mobile devices from auto-locking / dimming while a
+        // run is in progress. The lock is a no-op on unsupported browsers (older iOS,
+        // desktop without the API). The OS auto-releases the sentinel whenever the page
+        // is hidden (tab switch, screen lock), so we re-request it on visibilitychange
+        // when we come back to a live, unpaused run. Acquire on run start / resume,
+        // release on pause / game over.
+        let wakeLockSentinel = null;
+        async function requestWakeLock() {
+            if (!('wakeLock' in navigator)) return;
+            if (wakeLockSentinel) return;
+            try {
+                wakeLockSentinel = await navigator.wakeLock.request('screen');
+                // The sentinel can be released by the OS; drop our ref so the next
+                // request re-acquires rather than short-circuiting on a dead lock.
+                wakeLockSentinel.addEventListener('release', () => {
+                    wakeLockSentinel = null;
+                });
+            } catch (e) {
+                // Request can reject (page not visible, OS policy). Stay silent —
+                // the game is fully playable without the lock.
+                wakeLockSentinel = null;
+            }
+        }
+        function releaseWakeLock() {
+            if (!wakeLockSentinel) return;
+            const s = wakeLockSentinel;
+            wakeLockSentinel = null;
+            s.release().catch(() => {});
+        }
+
+        function formatRunTime(seconds) {
             const s = Math.max(0, Math.floor(seconds));
             const m = Math.floor(s / 60);
             const rem = s % 60;
@@ -79,6 +109,7 @@
             rumble.stopAll();
             playPauseSound();
             fadeAudioChannelsTo(0, 0.15);
+            releaseWakeLock();
             startBtn.textContent = "Resume Game";
             announce("Simulator paused.");
         }
@@ -88,6 +119,7 @@
             paused = false;
             playPauseSound();
             fadeAudioChannelsTo(null, 0.15);
+            requestWakeLock();
             startBtn.textContent = "Pause Game";
             announce("Resumed.");
         }
@@ -180,6 +212,7 @@
             targetSpeed = 0;
             laneHeld = 0;
             keyLaneHeldDir = 0;
+            releaseWakeLock();
             stopHorn();
             rumble.stopAll();
             destroyRocketWind();
@@ -362,6 +395,7 @@
             gameOverEl.style.display = 'none';
             startBtn.style.display = 'inline-block';
             startBtn.textContent = "Pause Game";
+            requestWakeLock();
         }
 
         restartBtn.addEventListener('click', startGame);
@@ -386,6 +420,20 @@
             if (!gameRunning && e.key === 'Enter') {
                 e.preventDefault();
                 startGame();
+            }
+        });
+
+        // Pause the run when the page is hidden — the device locking its screen,
+        // the player switching apps/tabs, etc. On iOS the game otherwise keeps
+        // running (and burning fuel) behind a locked screen, so the player comes
+        // back to a crashed or dead run. visibilitychange fires for screen lock,
+        // app switch, and tab switch on every modern browser. When we return to a
+        // live, unpaused run, re-request the wake lock the OS dropped while hidden.
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                if (gameRunning && !paused) pauseGame();
+            } else {
+                if (gameRunning && !paused) requestWakeLock();
             }
         });
 
