@@ -280,6 +280,105 @@
                 }
             }
 
+            // ── Cluster / second obstacle ─────────────────────────────────────
+            if (speed > 0 && obstacle2.active) {
+                obstacle2.distance -= (speed / 100) * 90 * delta;
+
+                if (obstacle2.lane === lane && obstacle2.distance < obstacle2.minSameLaneDistance) {
+                    obstacle2.minSameLaneDistance = obstacle2.distance;
+                }
+
+                if (!obstacle2.passed && obstacle2.distance <= 0) {
+                    obstacle2.passed = true;
+                    if (obstacle2.lane === lane && !jumping) {
+                        if (shieldCount > 0) {
+                            shieldCount--;
+                            stats.shieldsAbsorbed += 1;
+                            playShieldBloom();
+                            playShieldCountIndicator(shieldCount);
+                            const rem = shieldCount;
+                            announce(
+                                `Shield absorbed cluster obstacle. ${rem > 0 ? `${rem} shield${rem !== 1 ? 's' : ''} remaining.` : 'No shields left.'}`,
+                                {category: 'powerups'}
+                            );
+                            clearObstacle2();
+                            return;
+                        }
+                        playCue(120, 0.5, 'triangle');
+                        let damage = Math.max(20, Math.round(speed));
+                        if (activePowerUp && activePowerUp.type === 'rocket') {
+                            damage = Math.max(5, Math.round(damage * 0.25));
+                        }
+                        health = Math.max(0, health - damage);
+                        speed = Math.max(0, speed - 40);
+                        accelHoldUntil = syngen.time() + SLOWDOWN_RECOVERY_DELAY;
+                        score -= 5;
+                        stats.crashes += 1;
+                        nearMissStreak = 0;
+                        if (health === 0) {
+                            announce(`Crash! Vehicle destroyed.`);
+                            clearObstacle2();
+                            gameOver("You wiped out!.");
+                            return;
+                        }
+                        announce(`Crash! Took ${damage} damage. Health ${health} percent.`);
+                        clearObstacle2();
+                        return;
+                    } else {
+                        const speedFactor = Math.max(0, Math.min(1, speed / 100));
+                        const nearMissFactor = (jumping || obstacle2.minSameLaneDistance === Infinity)
+                            ? 0
+                            : Math.max(0, Math.min(1, 1 - obstacle2.minSameLaneDistance / 100));
+                        const isNearMiss = nearMissFactor > 0.7;
+
+                        if (isNearMiss) {
+                            nearMissStreak++;
+                        } else {
+                            nearMissStreak = 0;
+                        }
+
+                        let points;
+                        if (activePowerUp && activePowerUp.type === 'rocket') {
+                            const baseAndSpeed = 10 + 45 * speedFactor;
+                            const mult = 1.5 + rand() * 1.5;
+                            points = Math.round(baseAndSpeed * mult + 45 * nearMissFactor * 3);
+                        } else {
+                            points = Math.round(10 + 45 * speedFactor + 45 * nearMissFactor);
+                        }
+                        if (Math.abs(obstacle2.lane - lane) >= 2) {
+                            points = Math.round(points / 2);
+                        }
+
+                        let streakMult = 1;
+                        if (isNearMiss && nearMissStreak >= NEAR_MISS_STREAK_MIN) {
+                            const t = Math.min(1,
+                                (nearMissStreak - NEAR_MISS_STREAK_MIN) /
+                                (NEAR_MISS_STREAK_CAP - NEAR_MISS_STREAK_MIN)
+                            );
+                            streakMult = NEAR_MISS_MULT_MIN + t * (NEAR_MISS_MULT_MAX - NEAR_MISS_MULT_MIN);
+                            points = Math.round(points * streakMult);
+                        }
+
+                        if (speed >= LOW_SPEED_THRESHOLD) score += points;
+                        stats.obstaclesAvoided += 1;
+                        if (isNearMiss) stats.nearMisses += 1;
+                        if (isNearMiss) playNearMiss(); else playCue(880, 0.2);
+                        const flavor = isNearMiss ? 'Near miss! ' : '';
+                        const streakMsg = (isNearMiss && nearMissStreak >= NEAR_MISS_STREAK_MIN)
+                            ? ` Streak ${nearMissStreak}, ${streakMult.toFixed(1)}x.`
+                            : '';
+                        const pointsMsg = speed < LOW_SPEED_THRESHOLD
+                            ? 'No points — low speed.'
+                            : `Plus ${points} points.`;
+                        announce(`${flavor}Cluster obstacle passed.${streakMsg} ${pointsMsg}`, {category: 'items'});
+                    }
+                }
+
+                if (obstacle2.distance <= OBSTACLE_DESPAWN_AT) {
+                    clearObstacle2();
+                }
+            }
+
             // Fuel burn — superlinear with speed. Floored at 0; running dry kills
             // the throttle but leaves the player able to coast and call out fuel.
             // Rocket freezes the tank in place; so does the jump (engine is idling
@@ -338,7 +437,7 @@
                     if (wrench.lane === lane && !jumping) {
                         stats.wrenchesCollected += 1;
                         const wasFullHealth = health >= HEALTH_MAX;
-                        health = Math.min(HEALTH_MAX, health + WRENCH_HEAL_AMOUNT);
+                        health = HEALTH_MAX;
                         if (wasFullHealth) {
                             playWrenchPickupFull();
                         } else {
@@ -588,6 +687,7 @@
             if (!gameRunning) { draw(); return; }
 
             updateObstacleAudio();
+            updateObstacleAudio2();
             updateBoosterAudio();
             updateCpuEngineAudio();
             updateGasCanAudio();

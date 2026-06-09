@@ -63,7 +63,7 @@
                 announce(`${Math.round(speed)} miles per hour.`);
                 e.preventDefault();
             } else if (e.key === 'h' || e.key === 'H') {
-                announce(`Health ${health} percent.`);
+                announce(`Health ${health} percent${shieldCount > 0 ? ` with ${shieldCount} shield${shieldCount > 1 ? 's' : ''} active` : ''}.`);
                 e.preventDefault();
             } else if (e.key === ' ' || e.code === 'Space') {
                 if (!e.repeat) {
@@ -564,7 +564,7 @@
                 }
             }
             if (pressed(GAMEPAD_BTN_HEALTH) && shiftHeld) {
-                announce(`Health ${health} percent.`);
+                announce(`Health ${health} percent${shieldCount > 0 ? ` with ${shieldCount} shield${shieldCount > 1 ? 's' : ''} active` : ''}.`);
             }
 
             if (pressed(GAMEPAD_BTN_POWERUP)) {

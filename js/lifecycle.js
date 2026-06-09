@@ -249,6 +249,7 @@
                 // of a second into the new game — audio dropping out for no reason.
                 if (gameRunning) return;
                 clearObstacle();
+                clearObstacle2();
                 clearGasCan();
                 clearWrench();
                 clearPowerUpPickup();
@@ -365,6 +366,7 @@
             fuel = FUEL_MAX;
             outOfFuelAnnounced = false;
             clearObstacle();
+            clearObstacle2();
             clearGasCan();
             clearWrench();
             clearPowerUpPickup();

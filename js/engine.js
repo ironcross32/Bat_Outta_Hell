@@ -297,11 +297,23 @@
             }
         }
 
+        // Returns a frequency multiplier drawn from ±OBSTACLE_PITCH_MAX_SEMITONES,
+        // scaled by the current difficulty tier so variance is zero before 10 K and
+        // reaches its maximum at tier 10 (100 K+).
+        function obstaclePitchMultiplier() {
+            const tier = difficultyTier();
+            if (tier === 0) return 1.0;
+            const maxSemitones = OBSTACLE_PITCH_MAX_SEMITONES * tier / 10;
+            const semitones = (rand() * 2 - 1) * maxSemitones;
+            return Math.pow(2, semitones / 12);
+        }
+
         function spawnObstacle(laneArg, distArg) {
             obstacle.lane = laneArg !== undefined ? laneArg : Math.floor(rand() * 3);
             obstacle.distance = distArg !== undefined ? distArg : 100;
             obstacle.active = true;
             obstacle.passed = false;
+            obstacle.pitchMul = obstaclePitchMultiplier();
             obstacle.minSameLaneDistance = obstacle.lane === lane ? obstacle.distance : Infinity;
 
             const positionWord = obstacle.lane === lane
@@ -371,9 +383,82 @@
             // Manual forward-axis Doppler (see DOPPLER_EFFECTIVE_C comment above).
             // Carrier and modulator move together to preserve FM timbre.
             const dopplerMul = dopplerMultiplier(obstacle.distance);
-            const carrierHz = OBSTACLE_CARRIER_HZ * dopplerMul;
+            const carrierHz = OBSTACLE_CARRIER_HZ * obstacle.pitchMul * dopplerMul;
             obstacle.prop.synth.param.frequency.setTargetAtTime(carrierHz, now, 0.03);
             obstacle.prop.synth.param.mod.frequency.setTargetAtTime(carrierHz * 1.5, now, 0.03);
+        }
+
+        // ── Cluster / second obstacle ──────────────────────────────────────────
+        // Mirrors spawnObstacle / clearObstacle / updateObstacleAudio exactly,
+        // but operates on the obstacle2 record. Used only by 'clusterPartner'
+        // world events — never spawned by the primary slot path.
+
+        function spawnObstacle2(laneArg, distArg, isSideBySide) {
+            obstacle2.lane = laneArg !== undefined ? laneArg : Math.floor(rand() * 3);
+            obstacle2.distance = distArg !== undefined ? distArg : 100;
+            obstacle2.active = true;
+            obstacle2.passed = false;
+            obstacle2.pitchMul = obstaclePitchMultiplier();
+            obstacle2.minSameLaneDistance = obstacle2.lane === lane ? obstacle2.distance : Infinity;
+
+            const positionWord = obstacle2.lane === lane
+                ? 'ahead in your lane'
+                : (obstacle2.lane < lane ? 'ahead on your left' : 'ahead on your right');
+            if (isSideBySide) {
+                announce(`Second obstacle ${positionWord}!`, {category: 'items'});
+            } else {
+                announce(`Slalom! Obstacle ${positionWord}!`, {category: 'items'});
+            }
+
+            obstacle2.prop = makeObstacleSound({
+                x: obstacle2.distance / FORWARD_SCALE,
+                y: (smoothedLane - obstacle2.lane) * LANE_SPACING,
+            });
+        }
+
+        function clearObstacle2() {
+            if (obstacle2.prop) {
+                obstacle2.prop.destroy();
+                obstacle2.prop = null;
+            }
+            obstacle2.active = false;
+            obstacle2.passed = false;
+            rumble.clearSource('obstacle2');
+        }
+
+        function updateObstacleAudio2() {
+            if (!obstacle2.active || !obstacle2.prop) return;
+
+            obstacle2.prop.setVector({
+                x: obstacle2.distance / FORWARD_SCALE,
+                y: (smoothedLane - obstacle2.lane) * LANE_SPACING,
+            });
+
+            const proximity = Math.max(0, 1 - Math.abs(obstacle2.distance) / 100);
+
+            const laneDelta = Math.abs(obstacle2.lane - lane);
+            if (jumping || laneDelta >= 2) {
+                rumble.clearSource('obstacle2');
+            } else {
+                rumble.setSource('obstacle2', 0, proximity * 0.9, laneDelta === 0);
+            }
+
+            const now = syngen.time();
+            const filterCurve = Math.pow(proximity, 0.4);
+            const cutoff = OBSTACLE_FILTER_MIN * Math.pow(
+                OBSTACLE_FILTER_MAX / OBSTACLE_FILTER_MIN,
+                filterCurve
+            );
+            obstacle2.prop.synth.filter.frequency.setTargetAtTime(cutoff, now, 0.05);
+
+            const gainCurve = Math.pow(proximity, 0.55);
+            const gainDb = OBSTACLE_GAIN_MIN_DB + (OBSTACLE_GAIN_MAX_DB - OBSTACLE_GAIN_MIN_DB) * gainCurve;
+            obstacle2.prop.synth.param.gain.setTargetAtTime(syngen.fn.fromDb(gainDb), now, 0.05);
+
+            const dopplerMul = dopplerMultiplier(obstacle2.distance);
+            const carrierHz = OBSTACLE_CARRIER_HZ * obstacle2.pitchMul * dopplerMul;
+            obstacle2.prop.synth.param.frequency.setTargetAtTime(carrierHz, now, 0.03);
+            obstacle2.prop.synth.param.mod.frequency.setTargetAtTime(carrierHz * 1.5, now, 0.03);
         }
 
         // Drop the engine voice for one firing cycle by squashing the misfire
@@ -472,13 +557,17 @@
                 nextMisfireAt = 0;
             }
 
-            if (health < HEALTH_MISFIRE_GATE) {
+            if (health < HEALTH_BAD_GATE) {
                 if (nextBackfireAt === 0) nextBackfireAt = now + 2 + Math.random() * 3;
                 if (now >= nextBackfireAt) {
-                    const intensity = Math.min(1, (HEALTH_MISFIRE_GATE - health) / HEALTH_MISFIRE_GATE);
-                    const exaggerated = health < HEALTH_CRITICAL_GATE;
-                    const cluster = (Math.random() < (exaggerated ? 0.45 : 0.3))
-                        ? 2 + Math.floor(Math.random() * (exaggerated ? 4 : 2))
+                    const intensity = Math.min(1, (HEALTH_BAD_GATE - health) / HEALTH_BAD_GATE);
+                    // Cluster chance and size scale continuously with damage: near 50%
+                    // health bangs are always single; near 0% clusters become common.
+                    const healthFrac = health / HEALTH_BAD_GATE; // 0 = dead, 1 = at gate
+                    const clusterChance = (1 - healthFrac) * 0.55;
+                    const maxClusterExtra = Math.max(1, Math.floor((1 - healthFrac) * 4));
+                    const cluster = (Math.random() < clusterChance)
+                        ? 2 + Math.floor(Math.random() * maxClusterExtra)
                         : 1;
                     for (let i = 0; i < cluster; i++) {
                         const t = i * (0.08 + Math.random() * 0.14);

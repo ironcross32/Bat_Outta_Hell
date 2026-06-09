@@ -255,7 +255,17 @@
                 // Once the last finger is up, fire the multi-touch gesture if the
                 // gesture ever involved ≥2 fingers, then reset for the next one.
                 if (_mt.size === 0) {
-                    if (_mtPeak >= 2) _handleMultiGesture(_mtLifted.slice());
+                    if (_mtPeak >= 2) {
+                        _handleMultiGesture(_mtLifted.slice());
+                    } else if (_mtPeak === 1 && !gameRunning && _mtLifted.length === 1) {
+                        const rec = _mtLifted[0];
+                        const now = performance.now();
+                        if ((now - rec.startTime) < TAP_MAX_MS &&
+                            Math.abs(rec.lastX - rec.startX) < TAP_MAX_PX &&
+                            Math.abs(rec.lastY - rec.startY) < TAP_MAX_PX) {
+                            startGame();
+                        }
+                    }
                     _mtLifted.length = 0;
                     _mtPeak = 0;
                 }

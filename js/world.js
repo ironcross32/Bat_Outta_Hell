@@ -25,6 +25,7 @@
         // Minimum gap (in units) between any two consecutive non-sinkhole
         // events. Stops announcements from piling on top of each other. 110
         // units ≈ 1.2 s at 100 mph, ~0.6 s at 200 mph.
+        // Base values — difficulty scaling tightens these starting at 10 K score.
         const WORLD_MIN_GAP = 90;
         // Initial cushion in front of the player at run start so the very first
         // hazards aren't right under the bumper before the engine has spooled.
@@ -47,6 +48,7 @@
         // the residual offset to the spawn function as `distance`.
         const WORLD_SPAWN_DIST = {
             obstacle: 100,
+            clusterPartner: 100,
             gasCan: 100,
             wrench: 100,
             ramp: 100,
@@ -82,9 +84,47 @@
         // WORLD_MAX_GAP_PITY is a belt-and-suspenders ceiling. The audio-only
         // UX needs predictable cadence more than perlin's natural silences.
         // DENSE just above WORLD_MIN_GAP so the min-gap floor stays effective.
+        // All four values are base lines; difficulty scaling (see worldEffective*
+        // helpers below) tightens them as score climbs past 10 K milestones.
         const WORLD_DENSE_GAP = 110;   // ~1.2 s @ 100 mph, ~0.6 s @ 200 mph
         const WORLD_SPARSE_GAP = 280;  // ~3.1 s @ 100 mph, ~1.6 s @ 200 mph
         const WORLD_MAX_GAP_PITY = 350;
+
+        // ── Score-based difficulty scaling ────────────────────────────────────
+        // Every 10 K points beyond the first 10 K adds one tier. Gaps shrink
+        // per tier (floors prevent them from going unreasonably tight). Clusters
+        // become possible at tier 1 and grow more frequent with each tier.
+        //   Tier 0 (<10 K)  : vanilla settings, no clusters
+        //   Tier 1 (10 K)   : slight gap reduction, 10 % cluster chance
+        //   Tier 5 (50 K)   : moderate density, 50 % cluster chance
+        //   Tier 10 (100 K+): floors reached — densest possible, 60 % clusters
+        function difficultyTier() {
+            return Math.min(10, Math.floor(score / 10000));
+        }
+        function worldEffectiveMinGap() {
+            return Math.max(60, WORLD_MIN_GAP - difficultyTier() * 3);
+        }
+        function worldEffectiveDenseGap() {
+            return Math.max(75, WORLD_DENSE_GAP - difficultyTier() * 5);
+        }
+        function worldEffectiveSparseGap() {
+            return Math.max(150, WORLD_SPARSE_GAP - difficultyTier() * 13);
+        }
+        function worldEffectiveMaxGapPity() {
+            return Math.max(175, WORLD_MAX_GAP_PITY - difficultyTier() * 17);
+        }
+
+        // ── Obstacle cluster knobs ────────────────────────────────────────────
+        // Clusters are pairs of obstacles spawned close together: side-by-side
+        // (same forward position, different lanes — one escape lane left open) or
+        // slalom (staggered, alternating lanes — player must weave through both).
+        // Cluster partners use the obstacle2 slot; only one cluster can be live
+        // at a time (obstacle2.active gates the materialize path).
+        const CLUSTER_CHANCE_PER_TIER = 0.1;    // 10 % per tier above tier 0
+        const CLUSTER_CHANCE_MAX = 0.6;          // hard cap at 60 %
+        const CLUSTER_SIDE_BY_SIDE_CHANCE = 0.4; // 40 % of clusters are side-by-side
+        const CLUSTER_STAGGER_MIN = 40;          // units between slalom pair members
+        const CLUSTER_STAGGER_MAX = 80;          // (randomised inside this range)
         // Sinkholes require this much above the WORLD_SINKHOLE_WAVELENGTH
         // perlin curve AND all the spacing/cushion gates.
         const WORLD_SINKHOLE_THRESHOLD = 0.72;
@@ -181,6 +221,12 @@
             return 2;
         }
 
+        // Pick a cluster partner lane that differs from the primary lane.
+        function worldClusterPartnerLane(primaryLane) {
+            const others = [0, 1, 2].filter(l => l !== primaryLane);
+            return others[Math.floor(rand() * others.length)];
+        }
+
         // Walk every slot inside [from, to) once and append placements.
         function generateChunk(from, to) {
             for (let p = from; p < to; p += WORLD_SLOT_UNITS) {
@@ -238,25 +284,56 @@
                     }
                 }
 
-                if (p - worldLastEventAt < WORLD_MIN_GAP) continue;
+                if (p - worldLastEventAt < worldEffectiveMinGap()) continue;
 
                 // Perlin intensity (normalize from ~[-1,1] to [0,1]) sets gap
                 // length: high intensity → tight DENSE_GAP, low → loose
                 // SPARSE_GAP. Pity cap keeps the worst case bounded.
+                // All three thresholds shrink with difficulty tier.
                 const intensity = worldIntensityNoise.value(p / WORLD_INTENSITY_WAVELENGTH);
                 const intensity01 = Math.max(0, Math.min(1, (intensity + 1) / 2));
-                const gap = WORLD_DENSE_GAP
-                    + (WORLD_SPARSE_GAP - WORLD_DENSE_GAP) * (1 - intensity01);
-                const effectiveGap = Math.min(gap, WORLD_MAX_GAP_PITY);
+                const denseGap = worldEffectiveDenseGap();
+                const sparseGap = worldEffectiveSparseGap();
+                const gap = denseGap + (sparseGap - denseGap) * (1 - intensity01);
+                const effectiveGap = Math.min(gap, worldEffectiveMaxGapPity());
                 if (p - worldLastEventAt < effectiveGap) continue;
 
                 const typeRoll = worldTypeNoise.value(p / WORLD_TYPE_WAVELENGTH);
                 const laneRoll = worldLaneNoise.value(p / WORLD_LANE_WAVELENGTH);
                 const kind = worldKindFromRoll(typeRoll);
-                const lane = worldLaneFromRoll(laneRoll);
+                const evtLane = worldLaneFromRoll(laneRoll);
 
-                worldEvents.push({kind, at: p, lane});
+                worldEvents.push({kind, at: p, lane: evtLane});
                 worldLastEventAt = p;
+
+                // Cluster injection: obstacle slots at tier 1+ may spawn a
+                // partner on a different lane. Partners are injected directly
+                // into worldEvents (bypassing the gap metronome) and use the
+                // obstacle2 slot at materialize time via the 'clusterPartner'
+                // kind. worldEvents remains sorted because partner .at values
+                // (p or p+stagger) are smaller than the next regular slot at
+                // p + WORLD_SLOT_UNITS.
+                if (kind === 'obstacle') {
+                    const tier = difficultyTier();
+                    if (tier >= 1) {
+                        const cChance = Math.min(CLUSTER_CHANCE_MAX, tier * CLUSTER_CHANCE_PER_TIER);
+                        if (rand() < cChance) {
+                            const partnerLane = worldClusterPartnerLane(evtLane);
+                            if (rand() < CLUSTER_SIDE_BY_SIDE_CHANCE) {
+                                // Side-by-side: same forward position, different lane.
+                                worldEvents.push({kind: 'clusterPartner', at: p, lane: partnerLane, sideBySide: true});
+                            } else {
+                                // Slalom: staggered so the player must navigate both.
+                                const stagger = CLUSTER_STAGGER_MIN
+                                    + Math.floor(rand() * (CLUSTER_STAGGER_MAX - CLUSTER_STAGGER_MIN));
+                                worldEvents.push({kind: 'clusterPartner', at: p + stagger, lane: partnerLane, sideBySide: false});
+                                // Advance metronome to the partner's position so the
+                                // regular gap resumes from there, not from p.
+                                worldLastEventAt = p + stagger;
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -313,6 +390,7 @@
             // re-fills from worldPos with the new gating in effect.
             worldGeneratedThrough = worldPos;
             if (typeof clearObstacle === 'function') clearObstacle();
+            if (typeof clearObstacle2 === 'function') clearObstacle2();
             if (typeof clearGasCan === 'function') clearGasCan();
             if (typeof clearWrench === 'function') clearWrench();
             if (typeof clearSinkhole === 'function') clearSinkhole();
@@ -338,7 +416,30 @@
                 worldLastBoosterAt = worldPos;
                 return;
             }
+            // Horn ball mode: most non-obstacle slots become obstacles so the
+            // player has extra targets to shoot at. Sinkholes, tunnels, and
+            // cluster partners are left unchanged (they're already challenging or
+            // structural). The conversion is purely at materialise time so it
+            // doesn't interfere with the pre-generated horizon.
+            if (activePowerUp && activePowerUp.type === 'hornBall'
+                    && ev.kind !== 'obstacle'
+                    && ev.kind !== 'clusterPartner'
+                    && ev.kind !== 'sinkhole'
+                    && ev.kind !== 'tunnel') {
+                if (rand() < HORNBALL_OBSTACLE_CONVERT_CHANCE) {
+                    if (!obstacle.active && !sinkhole.active) {
+                        spawnObstacle(ev.lane, dist);
+                    }
+                    return;
+                }
+            }
             switch (ev.kind) {
+                case 'clusterPartner':
+                    // Cluster partner always uses obstacle2. Not gated on obstacle.active
+                    // (it's intentionally co-spawned with or shortly after obstacle1).
+                    if (obstacle2.active) return;
+                    spawnObstacle2(ev.lane, dist, ev.sideBySide);
+                    return;
                 case 'sinkhole':
                     // Only one ground-hazard at a time. If something is in the
                     // way we drop it — the global spacing already keeps these
@@ -412,7 +513,11 @@
                             if (!obstacle.active && !sinkhole.active) spawnObstacle(ev.lane, dist);
                             return;
                         }
-                        if (type === 'shield' && shieldCount > 0 && rand() < 0.75) {
+                        if (type === 'shield' && shieldCount === 1 && rand() < 0.50) {
+                            if (!obstacle.active && !sinkhole.active) spawnObstacle(ev.lane, dist);
+                            return;
+                        }
+                        if (type === 'shield' && shieldCount === 2 && rand() < 0.65) {
                             if (!obstacle.active && !sinkhole.active) spawnObstacle(ev.lane, dist);
                             return;
                         }

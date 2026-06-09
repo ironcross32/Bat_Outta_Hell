@@ -24,6 +24,10 @@
         const ROCKET_BOOST_SPEED = 175;   // temporary speed cap for the stack burst
         const ROCKET_BOOST_DURATION = 3;  // seconds the burst lasts
         const HORNBALL_DURATION = 60;
+        // While horn ball is active, this fraction of non-obstacle world slots
+        // (gas cans, wrenches, power-ups, ramps) are converted to obstacles so
+        // the player has more targets to shoot at.
+        const HORNBALL_OBSTACLE_CONVERT_CHANCE = 0.65;
         const PROJECTILE_LIFETIME = 30;
         const PROJECTILE_MAX_DISTANCE = 150;
         const PROJECTILE_HIT_RADIUS = 12;
@@ -1142,6 +1146,24 @@
                     }
                 }
                 clearObstacle();
+                clearProjectile();
+                return;
+            }
+            if (obstacle2.active && obstacle2.lane === projectile.lane
+                && Math.abs(obstacle2.distance - projectile.distance) < PROJECTILE_HIT_RADIUS) {
+                playExplosion('small');
+                rumble.pulse(0, 1.0, 0.18);
+                applyStreakHit();
+                stats.hornBallsHit += 1;
+                const accPct2 = (stats.hornBallsHit / (stats.hornBallsHit + stats.hornBallsMissed)) * 100;
+                if (accPct2 > 50) {
+                    const accBonus2 = Math.floor((accPct2 - 50) / 5) * 10;
+                    if (accBonus2 > 0) {
+                        score += accBonus2;
+                        announce(`Accuracy bonus. Plus ${accBonus2}.`, {category: 'powerups'});
+                    }
+                }
+                clearObstacle2();
                 clearProjectile();
                 return;
             }

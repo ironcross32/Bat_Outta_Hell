@@ -76,6 +76,13 @@
                 ctx.fillRect(obstacleX - 30, obstacleY - 20, 60, 40);
             }
 
+            if (obstacle2.active) {
+                const obstacle2Y = 320 - (obstacle2.distance * 3.2);
+                const obstacle2X = lanePositionsX[obstacle2.lane];
+                ctx.fillStyle = '#ff8833';
+                ctx.fillRect(obstacle2X - 30, obstacle2Y - 20, 60, 40);
+            }
+
             if (powerUpPickup.active) {
                 const pY = 320 - (powerUpPickup.distance * 3.2);
                 const pX = lanePositionsX[powerUpPickup.lane];
